@@ -99,9 +99,9 @@ def in_table_index(coor, size):
 def is_stable(x, node1, node2):
 	label_1 = x[node1][Indices.LABEL]
 	label_2 = x[node2][Indices.LABEL]
-	if label_1 == 0 and (label_2 == 2 or label_2 == 3 or label_2 == 4):
+	if label_1 == 0 and (label_2 == 2 or label_2 == 3):
 		return True
-	elif label_2 == 4 and (label_1 == 1 or label_1 == 2 or label_1 == 3):
+	elif label_2 == 3 and (label_1 == 1 or label_1 == 2):
 		return True
 	return False
 
@@ -497,7 +497,6 @@ class BaseGraphEnv():
 class GraphEnv(BaseGraphEnv):
 	def __init__(self, **kwargs):
 		super().__init__(**kwargs)
-		self.node_features = self.create_graph().x.shape[1]
 
 	def remove_edge(self, node1, node2):
 		mask = ~((self.state_graph.edge_index[0] == node1) & (self.state_graph.edge_index[1] == node2))
