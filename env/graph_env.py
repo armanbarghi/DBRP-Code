@@ -1,5 +1,6 @@
 import torch
 import random
+import numpy as np
 import networkx as nx
 import torch_geometric
 import matplotlib.pyplot as plt
@@ -30,52 +31,10 @@ def flatten_pos(pos, grid_size: tuple):
 def unflatten_pos(flat: int, grid_size: tuple):
 	row = flat // grid_size[1]
 	col = flat % grid_size[1]
-	return torch.tensor([row, col], dtype=torch.float32)
+	return torch.tensor(np.array([row, col]), dtype=torch.float32)
 
 def copy_graph(graph):
 	return graph.clone().detach()
-
-def dfs_cycle_detection(node, visited, rec_stack, edge_index, num_nodes):
-	if not visited[node]:
-		# Mark the current node as visited and part of the recursion stack
-		visited[node] = True
-		rec_stack[node] = True
-
-		# Recur for all the vertices adjacent to this vertex
-		for neighbor in edge_index[1][edge_index[0] == node]:
-			if not visited[neighbor]:
-				if dfs_cycle_detection(neighbor, visited, rec_stack, edge_index, num_nodes):
-					return True
-			elif rec_stack[neighbor]:
-				return True
-
-	# The node needs to be popped from recursion stack before function ends
-	rec_stack[node] = False
-	return False
-
-def has_cycles(data):
-	num_nodes = data.num_nodes
-	edge_index = data.edge_index
-	if len(edge_index) == 0:
-		return False
-
-	# Mark all the vertices as not visited and not part of recursion stack
-	visited = [False] * num_nodes
-	rec_stack = [False] * num_nodes
-
-	# Call the recursive helper function to detect cycle in different DFS trees
-	for node in range(num_nodes):
-		if not visited[node]:
-			if dfs_cycle_detection(node, visited, rec_stack, edge_index, num_nodes):
-				return True
-	return False
-
-def get_parents(node, edge_index):
-	if len(edge_index) == 0:
-		return []
-	outgoing_edges = edge_index[1] == node
-	return edge_index[0][outgoing_edges].tolist()
-
 
 ### Random Graph Generation
 
@@ -298,6 +257,3 @@ def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: 
 		x_arr[i][Indices.COORD] = x_arr[child_node][Indices.COORD].clone()
 
 	return Data(x=x_arr, edge_index=edge_index, pos=get_node_poses(num_nodes))
-
-
-### Graph Environment
