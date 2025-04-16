@@ -1,3 +1,4 @@
+import math
 import torch
 import random
 import numpy as np
@@ -15,15 +16,23 @@ class Indices:
 	# COORD = slice(0, 2)
 	# RELATION = slice(2, None)
 
-'''
-non-container
-0: yellow: spoon, fork, knife
-1: orange: apple, pear, banana
+def is_stable(x, node1, node2):
+	label_1 = x[node1][Indices.LABEL]
+	label_2 = x[node2][Indices.LABEL]
+	if label_1 == 0 and (label_2 in [3, 4, 5, 6]):
+		return True
+	elif (label_2 in [5, 6]) and (label_1 in [0, 1, 2, 3, 4]):
+		return True
+	return False
 
-container
-2: green: cup, mug, bowl
-4: blue: box, pan, basket
-'''
+# def is_stable(x, node1, node2):
+# 	label_1 = x[node1][Indices.LABEL]
+# 	label_2 = x[node2][Indices.LABEL]
+# 	if label_1 == 0 and (label_2 == 2 or label_2 == 3):
+# 		return True
+# 	elif label_2 == 3 and (label_1 == 1 or label_1 == 2):
+# 		return True
+# 	return False
 
 def flatten_pos(pos, grid_size: tuple):
 	return int(pos[0] * grid_size[1] + pos[1])
@@ -46,23 +55,21 @@ def in_table_index(coor, size):
     half_w, half_h = size[0] // 2, size[1] // 2
     return slice(x - half_w, x + half_w + 1), slice(y - half_h, y + half_h + 1)
 
-def is_stable(x, node1, node2):
-	label_1 = x[node1][Indices.LABEL]
-	label_2 = x[node2][Indices.LABEL]
-	if label_1 == 0 and (label_2 == 2 or label_2 == 3):
-		return True
-	elif label_2 == 3 and (label_1 == 1 or label_1 == 2):
-		return True
-	return False
-
 def get_node_poses(num_nodes):
-	if num_nodes <= 4:
-		return [[0,1],[1,1],[1,0],[0,0]]
-	elif num_nodes == 5:
-		return [[0,1],[0.5,1.5],[1,1],[1,0],[0,0]]
-	elif num_nodes == 6:
-		return [[0,1],[0.5,1.5],[1,1],[1,0],[0.5,-0.5],[0,0]]
-	return None
+    if num_nodes < 3:
+        raise ValueError("Number of nodes must be at least 3")
+
+    radius = 1  # You can adjust the radius to change the polygon size
+    angle_step = 2 * math.pi / num_nodes
+    positions = []
+
+    for i in range(num_nodes):
+        angle = i * angle_step
+        x = radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        positions.append([x, y])
+
+    return positions
 
 def generate_random_coordinates(grid_size: tuple, sizes: list, max_attempts: int=100) -> list:
 	"""
@@ -77,7 +84,7 @@ def generate_random_coordinates(grid_size: tuple, sizes: list, max_attempts: int
 	Returns:
 		list of torch.Tensor: List of coordinates for the placed objects.
 	"""
-	while True:  # Keep trying until all objects are successfully placed
+	for _ in range(max_attempts):  # Keep trying until all objects are successfully placed
 		table = np.zeros(grid_size, dtype=int)
 		success = True
 		coords = []
@@ -114,6 +121,7 @@ def generate_random_coordinates(grid_size: tuple, sizes: list, max_attempts: int
 
 		if success:
 			return coords  # Successfully placed all objects
+	return None  # Failed to place all objects after max attempts
 
 def generate_random_coordinates_with_ratio(grid_size: tuple, sizes: list, ratio: float, max_attempts: int=100, adjustment_factor: float=0.01) -> list:
 	"""
@@ -131,7 +139,7 @@ def generate_random_coordinates_with_ratio(grid_size: tuple, sizes: list, ratio:
 	"""
 	assert 0 <= ratio <= 1, "Ratio must be between 0 and 1"
 
-	while True:  # Keep trying until all objects are successfully placed
+	for _ in range(max_attempts):  # Keep trying until all objects are successfully placed
 		table = np.zeros(grid_size, dtype=int)
 		success = True
 		coords = []
@@ -179,19 +187,20 @@ def generate_random_coordinates_with_ratio(grid_size: tuple, sizes: list, ratio:
 
 		if success:
 			return coords  # Successfully placed all objects
+	return None  # Failed to place all objects after max attempts
 
 def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes: list, labels=None, p: float=0.6, ratio: float=0.5, iterations: int=100) -> Data:
 	if iterations == 0:
 		raise ValueError('Failed to create a graph with the given parameters')
 	
-	if grid_size[0] > grid_size[1]:
-		min_size = min([object_sizes[i][0] for i in range(num_labels)])
-		if min_size * num_nodes > grid_size[0]:
-			raise ValueError('Grid size is too small for the objects')
-	else:
-		min_size = min([object_sizes[i][1] for i in range(num_labels)])
-		if min_size * num_nodes > grid_size[1]:
-			raise ValueError('Grid size is too small for the objects')
+	# if grid_size[0] > grid_size[1]:
+	# 	min_size = min([object_sizes[i][0] for i in range(num_labels)])
+	# 	if min_size * num_nodes > grid_size[0]:
+	# 		raise ValueError('Grid size is too small for the objects')
+	# else:
+	# 	min_size = min([object_sizes[i][1] for i in range(num_labels)])
+	# 	if min_size * num_nodes > grid_size[1]:
+	# 		raise ValueError('Grid size is too small for the objects')
 	max_size_x = max([object_sizes[i][0] for i in range(num_labels)])
 	max_size_y = max([object_sizes[i][1] for i in range(num_labels)])
 	if max_size_x > grid_size[0] or max_size_y > grid_size[1]:
@@ -237,9 +246,9 @@ def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: 
 	# Allocate random positions to base nodes
 	sizes = [object_sizes[labels[i]] for i in range(num_nodes) if x_arr[i, Indices.RELATION].sum() == 0]
 	if ratio == 0.5:
-		coords = generate_random_coordinates(grid_size, sizes, 1000)
+		coords = generate_random_coordinates(grid_size, sizes, 300)
 	else:
-		coords = generate_random_coordinates_with_ratio(grid_size, sizes, ratio, 1000)
+		coords = generate_random_coordinates_with_ratio(grid_size, sizes, ratio, 300)
 	unallocated_nodes = list(range(num_nodes))
 	for i in range(num_nodes):
 		if x_arr[i, Indices.RELATION].sum() == 0:
