@@ -11,8 +11,9 @@ from typing import Union
 
 class Indices:
 	LABEL = slice(0, 1)
-	COORD = slice(1, 3)
-	RELATION = slice(3, None)
+	SIZE = slice(1, 3)
+	COORD = slice(3, 5)
+	RELATION = slice(5, None)
 	# COORD = slice(0, 2)
 	# RELATION = slice(2, None)
 
@@ -24,15 +25,6 @@ def is_stable(x, node1, node2):
 	elif (label_2 in [5, 6]) and (label_1 in [0, 1, 2, 3, 4]):
 		return True
 	return False
-
-# def is_stable(x, node1, node2):
-# 	label_1 = x[node1][Indices.LABEL]
-# 	label_2 = x[node2][Indices.LABEL]
-# 	if label_1 == 0 and (label_2 == 2 or label_2 == 3):
-# 		return True
-# 	elif label_2 == 3 and (label_1 == 1 or label_1 == 2):
-# 		return True
-# 	return False
 
 def flatten_pos(pos, grid_size: tuple):
 	return int(pos[0] * grid_size[1] + pos[1])
@@ -52,7 +44,7 @@ def in_table_index(coor, size):
     Helper function to generate a mask for placing an object on the table.
     """
     x, y = int(coor[0]), int(coor[1])
-    half_w, half_h = size[0] // 2, size[1] // 2
+    half_w, half_h = int(size[0] // 2), int(size[1] // 2)
     return slice(x - half_w, x + half_w + 1), slice(y - half_h, y + half_h + 1)
 
 def get_node_poses(num_nodes):
@@ -189,7 +181,7 @@ def generate_random_coordinates_with_ratio(grid_size: tuple, sizes: list, ratio:
 			return coords  # Successfully placed all objects
 	return None  # Failed to place all objects after max attempts
 
-def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes: list, labels=None, p: float=0.6, ratio: float=0.5, iterations: int=100) -> Data:
+def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes: list, labels=None, p: float=0.6, ratio: float=0.5, iterations: int=100) -> Data:
 	if iterations == 0:
 		raise ValueError('Failed to create a graph with the given parameters')
 	
@@ -201,15 +193,15 @@ def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: 
 	# 	min_size = min([object_sizes[i][1] for i in range(num_labels)])
 	# 	if min_size * num_nodes > grid_size[1]:
 	# 		raise ValueError('Grid size is too small for the objects')
-	max_size_x = max([object_sizes[i][0] for i in range(num_labels)])
-	max_size_y = max([object_sizes[i][1] for i in range(num_labels)])
-	if max_size_x > grid_size[0] or max_size_y > grid_size[1]:
-		raise ValueError('Grid size is too small for the objects')
+	# max_size_x = max([object_sizes[i][0] for i in range(num_labels)])
+	# max_size_y = max([object_sizes[i][1] for i in range(num_labels)])
+	# if max_size_x > grid_size[0] or max_size_y > grid_size[1]:
+	# 	raise ValueError('Grid size is too small for the objects')
 
 	if labels is None:
 		labels = [random.randint(0, num_labels-1) for _ in range(num_nodes)]
 		if np.sum([object_sizes[labels[i]][0]*object_sizes[labels[i]][0] for i in range(num_nodes)]) > grid_size[0]*grid_size[1]:
-			return create_graph_label_continuous(num_nodes, grid_size, num_labels, object_sizes, None, p, iterations-1)
+			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, p, iterations-1)
 	elif len(labels) != num_nodes:
 		raise ValueError('Number of labels must be equal to the number of nodes')
 	else:
@@ -217,7 +209,7 @@ def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: 
 			raise ValueError('objects are too big')
 
 	edge_index = torch.tensor([], dtype=torch.long)
-	x_arr = torch.zeros(num_nodes, num_nodes+2)
+	x_arr = torch.zeros(num_nodes, num_nodes+4)
 	x_arr = torch.cat([torch.tensor(labels, dtype=torch.float).reshape(-1, 1), x_arr], dim=1)
 
 	# Shuffle nodes
@@ -265,4 +257,7 @@ def create_graph_label_continuous(num_nodes: int, grid_size: tuple, num_labels: 
 			continue
 		x_arr[i][Indices.COORD] = x_arr[child_node][Indices.COORD].clone()
 
+	for i in range(num_nodes):
+		x_arr[i][Indices.SIZE] = torch.tensor(object_sizes[labels[i]], dtype=torch.float32)
+	
 	return Data(x=x_arr, edge_index=edge_index, pos=get_node_poses(num_nodes))
