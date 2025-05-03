@@ -3,3 +3,7 @@ torch
 torch_geometric
 networkx
 matplotlib
+seaborn
+PyBullet
+trimesh
+roboticstoolbox-python
