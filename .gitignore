@@ -58,3 +58,12 @@ __pycache__/
 
 # Environments
 venv/
+
+# Blender file
+objects/*/*/*.blend
+objects/*/*/*.obj
+objects/*/*/*.mtl
+objects/*/*/*.png
+objects/*/*/*.urdf
+objects/*/*/*.txt
+objects/*/*/assets/
