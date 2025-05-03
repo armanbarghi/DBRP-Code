@@ -2,12 +2,51 @@ import math
 import torch
 import random
 import numpy as np
-import networkx as nx
-import torch_geometric
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap, BoundaryNorm
 from torch_geometric.data import Data
 import numpy as np
-from typing import Union
+
+_OBJECTS_SET_1 = {
+    0: {"name": "fork", "color": "yellow", "category": "cat1", "size": (19, 19)},
+    1: {"name": "spoon", "color": "yellow", "category": "cat1", "size": (19, 19)},
+    2: {"name": "knife", "color": "yellow", "category": "cat1", "size": (19, 19)},
+    3: {"name": "apple", "color": "orange", "category": "cat2", "size": (9, 9)},
+    4: {"name": "pear", "color": "orange", "category": "cat2", "size": (9, 9)},
+    5: {"name": "banana", "color": "orange", "category": "cat2", "size": (17, 17)},
+    6: {"name": "paper-cup", "color": "green", "category": "cat3", "size": (9, 9)},
+    7: {"name": "mug", "color": "green", "category": "cat3", "size": (13, 13)},
+    8: {"name": "bowl", "color": "green", "category": "cat3", "size": (13, 13)},
+    9: {"name": "basket", "color": "blue", "category": "cat4", "size": (21, 21)},
+    10: {"name": "box", "color": "blue", "category": "cat4", "size": (21, 21)},
+    11: {"name": "pan", "color": "blue", "category": "cat4", "size": (27, 27)}
+}
+
+_OBJECTS_SET_2 = {
+    0: {"name": "fork", "color": "yellow", "category": "cat1", "size": (7, 7)},
+    1: {"name": "apple", "color": "orange", "category": "cat2", "size": (11, 11)},
+    2: {"name": "banana", "color": "orange", "category": "cat2", "size": (17, 17)},
+    3: {"name": "paper-cup", "color": "green", "category": "cat3", "size": (11, 11)},
+    4: {"name": "bowl", "color": "green", "category": "cat3", "size": (17, 17)},
+    5: {"name": "basket", "color": "blue", "category": "cat4", "size": (21, 21)},
+    6: {"name": "pan", "color": "blue", "category": "cat4", "size": (27, 27)}
+}
+
+OBJECTS = _OBJECTS_SET_1	# Default value
+
+def set_objects(version='set1'):
+    global OBJECTS
+    if version == 'set1':
+        OBJECTS = _OBJECTS_SET_1
+    elif version == 'set2':
+        OBJECTS = _OBJECTS_SET_2
+
+CATEGORY_STABILITY = {
+    'cat1': ['cat3', 'cat4'],
+    'cat2': ['cat4'],
+    'cat3': ['cat4'],
+    'cat4': []  # not stable on anything
+}
 
 class Indices:
 	LABEL = slice(0, 1)
@@ -16,15 +55,6 @@ class Indices:
 	RELATION = slice(5, None)
 	# COORD = slice(0, 2)
 	# RELATION = slice(2, None)
-
-def is_stable(x, node1, node2):
-	label_1 = x[node1][Indices.LABEL]
-	label_2 = x[node2][Indices.LABEL]
-	if label_1 == 0 and (label_2 in [3, 4, 5, 6]):
-		return True
-	elif (label_2 in [5, 6]) and (label_1 in [0, 1, 2, 3, 4]):
-		return True
-	return False
 
 def flatten_pos(pos, grid_size: tuple):
 	return int(pos[0] * grid_size[1] + pos[1])
@@ -36,6 +66,13 @@ def unflatten_pos(flat: int, grid_size: tuple):
 
 def copy_graph(graph):
 	return graph.clone().detach()
+
+def is_in_env(coor, size, grid_size):
+	if coor[0] - size[0]//2 < 0 or coor[0] + size[0]//2 >= grid_size[0]:
+		return False
+	if coor[1] - size[1]//2 < 0 or coor[1] + size[1]//2 >= grid_size[1]:
+		return False
+	return True
 
 def find_target_obj(x, node):
 	i = (x[node, Indices.RELATION] == 1).nonzero(as_tuple=True)[0]
@@ -52,7 +89,7 @@ def find_start_obj(x, node):
 def is_empty_object(x, node):
 	return find_start_obj(x, node) is None
 
-def is_edge_in_graph(x, node1, node2):
+def is_stacked_on(x, node1, node2):
 	if x[node1, Indices.RELATION.start + node2] == 0:
 		return False
 	return True
@@ -72,16 +109,16 @@ def get_obj_size(x, node):
 	return x[node, Indices.SIZE].clone().tolist()
 
 def get_obj_label(x, node):
-	return x[node, Indices.LABEL].item()
+	return int(x[node, Indices.LABEL].item())
 
 def get_obj_relation(x, node):
 	return x[node, Indices.RELATION].clone().tolist()
 
-def in_table_index(coor, size):
+def in_table_index(center, size):
     """
     Helper function to generate a mask for placing an object on the table.
     """
-    x, y = int(coor[0]), int(coor[1])
+    x, y = int(center[0]), int(center[1])
     half_w, half_h = int(size[0] // 2), int(size[1] // 2)
     return slice(x - half_w, x + half_w + 1), slice(y - half_h, y + half_h + 1)
 
@@ -100,8 +137,6 @@ def get_node_poses(num_nodes):
         positions.append([x, y])
 
     return positions
-
-### Random Graph Generation
 
 def generate_random_coordinates(grid_size: tuple, sizes: list, max_attempts: int=100) -> list:
 	"""
@@ -210,35 +245,101 @@ def generate_random_coordinates_with_ratio(grid_size: tuple, sizes: list, ratio:
 
 	return None  # Failed to place all objects after max attempts
 
-def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes: dict, labels=None, p: float=0.6, ratio: float=0.5, max_attempts: int=10) -> Data:
+def is_stable(x, node1, node2):
+    label1 = get_obj_label(x, node1)
+    label2 = get_obj_label(x, node2)
+
+    cat1 = OBJECTS[label1]['category']
+    cat2 = OBJECTS[label2]['category']
+
+    return cat2 in CATEGORY_STABILITY[cat1]
+
+def plot_graph(graph, grid_size, ax=None, fig_size=2.5, title=None, constraints=[]):
+	if ax is None:
+		fig, ax = plt.subplots(1, 1, figsize=(fig_size, fig_size * (grid_size[1] / grid_size[0])))
+
+	color_by_label = {k + 1: v['color'] for k, v in OBJECTS.items()}
+	color_by_label[0] = 'white'  # Background
+	color_by_label[max(color_by_label.keys()) + 1] = 'red'  # Constraints
+
+	all_sizes = graph.x[:, Indices.SIZE]
+	all_labels = sorted(color_by_label.keys())
+	color_list = [color_by_label[label] for label in all_labels]
+
+	mapped_table = -1 * np.ones(grid_size, dtype=int)
+	unrendered_nodes = list(range(graph.num_nodes))
+	while len(unrendered_nodes) > 0:
+		i = unrendered_nodes.pop(0)
+		label_i = get_obj_label(graph.x, i)
+		coor_i = get_obj_pos(graph.x, i)
+		size_i = get_obj_size(graph.x, i)
+
+		if is_stacked_object(graph.x, i):
+			child = find_target_obj(graph.x, i)
+			if child in unrendered_nodes:
+				unrendered_nodes.append(i)
+				continue
+
+			child_label = get_obj_label(graph.x, child)
+			if OBJECTS[label_i]['category'] == 'cat1' and OBJECTS[child_label]['category'] == 'cat3':
+				size_i = [size_i[0] // 4, size_i[1] // 4]
+			elif torch.all(all_sizes == all_sizes[0]):
+				size_i = [size_i[0] // 2, size_i[1] // 2]
+
+		mapped_table[in_table_index(coor_i, size_i)] = label_i + 1
+
+	for c in constraints:
+		if isinstance(c, torch.Tensor):
+			c = c.numpy()
+		c_x, c_y = map(int, c)
+		mapped_table[c_x, c_y] = list(color_by_label.keys())[-1]
+
+	cmap = ListedColormap(color_list)
+	bounds = np.arange(len(color_list)+1)
+	norm = BoundaryNorm(bounds, cmap.N)
+	ax.imshow(mapped_table, cmap=cmap, norm=norm, origin='upper')
+
+	ax.set_xticks(np.arange(-0.5, mapped_table.shape[1], 1), minor=True)
+	ax.set_yticks(np.arange(-0.5, mapped_table.shape[0], 1), minor=True)
+	ax.tick_params(which='minor', bottom=False, left=False)
+	ax.set_xticks([])
+	ax.set_yticks([])
+
+	for i in range(graph.num_nodes):
+		label_i = get_obj_label(graph.x, i)
+		coor_i = get_obj_pos(graph.x, i)
+		size_i = get_obj_size(graph.x, i)
+		if is_stacked_object(graph.x, i):
+			child = find_target_obj(graph.x, i)
+			child_label = get_obj_label(graph.x, child)
+			if OBJECTS[label_i]['category'] == 'cat1' and OBJECTS[child_label]['category'] == 'cat3':
+				size_i = [size_i[0] // 4, size_i[1] // 4]
+			elif torch.all(all_sizes == all_sizes[0]):
+				size_i = [size_i[0] // 2, size_i[1] // 2]
+
+		ax.text(coor_i[1] - size_i[1] // 2, coor_i[0] - size_i[0] // 2, str(i),
+				ha='center', va='center', color='black')
+
+	if title is not None:
+		ax.set_title(title)
+
+def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes: dict, labels=None, stack_prob: float=0.6, ratio: float=0.5, max_attempts: int=10) -> Data:
+	assert num_nodes >= 2
+
 	if max_attempts == 0:
 		raise ValueError('Failed to create a graph with the given parameters')
-	
-	# if grid_size[0] > grid_size[1]:
-	# 	min_size = min([object_sizes[i][0] for i in range(num_labels)])
-	# 	if min_size * num_nodes > grid_size[0]:
-	# 		raise ValueError('Grid size is too small for the objects')
-	# else:
-	# 	min_size = min([object_sizes[i][1] for i in range(num_labels)])
-	# 	if min_size * num_nodes > grid_size[1]:
-	# 		raise ValueError('Grid size is too small for the objects')
-	# max_size_x = max([object_sizes[i][0] for i in range(num_labels)])
-	# max_size_y = max([object_sizes[i][1] for i in range(num_labels)])
-	# if max_size_x > grid_size[0] or max_size_y > grid_size[1]:
-	# 	raise ValueError('Grid size is too small for the objects')
-	assert num_nodes >= 2
 
 	label_flag = True
 	if labels is None:
 		label_flag = False
 		labels = [random.randint(0, num_labels-1) for _ in range(num_nodes)]
-		if np.sum([object_sizes[labels[i]][0]*object_sizes[labels[i]][1] for i in range(num_nodes)]) > grid_size[0]*grid_size[1]:
+		if np.sum([object_sizes[labels[id]][0]*object_sizes[labels[id]][1] for id in range(num_nodes)]) > grid_size[0]*grid_size[1]:
 			print('Man! The objects are too big!')
-			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, p, ratio, max_attempts-1)
+			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, stack_prob, ratio, max_attempts-1)
 	elif len(labels) != num_nodes:
 		raise ValueError('Number of labels must be equal to the number of nodes')
 	else:
-		if np.sum([object_sizes[labels[i]][0]*object_sizes[labels[i]][1] for i in range(num_nodes)]) > grid_size[0]*grid_size[1]:
+		if np.sum([object_sizes[labels[id]][0]*object_sizes[labels[id]][1] for id in range(num_nodes)]) > grid_size[0]*grid_size[1]:
 			raise ValueError('Man! The objects are too big!')
 
 	edge_index = torch.tensor([], dtype=torch.long)
@@ -247,14 +348,15 @@ def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes
 
 	# Random label for each node
 	nodes = list(range(num_nodes))
-	random.shuffle(nodes)
 	for node in nodes:
 		x_arr[node][Indices.LABEL] = labels[node]
 		x_arr[node][Indices.SIZE] = torch.tensor(object_sizes[labels[node]], dtype=torch.float32)
 
+	random.shuffle(nodes)
+
 	# Random connection between edges
 	for node in nodes:
-		if random.random() < p:
+		if random.random() < stack_prob:
 			node1 = node
 			node2 = node1
 			while node2 == node1:
@@ -279,9 +381,9 @@ def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes
 	if coords is None:
 		print('Trying again!')
 		if label_flag:
-			return create_graph(num_nodes, grid_size, num_labels, object_sizes, labels, p, ratio, max_attempts-1)
+			return create_graph(num_nodes, grid_size, num_labels, object_sizes, labels, stack_prob, ratio, max_attempts-1)
 		else:
-			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, p, ratio, max_attempts-1)
+			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, stack_prob, ratio, max_attempts-1)
 	
 	unallocated_nodes = list(range(num_nodes))
 	for i in range(num_nodes):
@@ -301,3 +403,44 @@ def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes
 		x_arr[i][Indices.COORD] = get_obj_pos(x_arr, target_node)
 
 	return Data(x=x_arr, edge_index=edge_index, pos=get_node_poses(num_nodes))
+
+def cal_density(graph, grid_size):
+	phi = 0
+	for i in range(graph.num_nodes):
+		size_i = get_obj_size(graph.x, i)
+		phi += (size_i[0] * size_i[1])
+
+	return phi / (grid_size[0] * grid_size[1])
+
+def get_obj_sizes(num_objects, grid_size, phi, verbose=0):
+	object_sizes = {k: v["size"] for k, v in OBJECTS.items()}
+
+	if phi == 'mix':
+		if verbose > 0:
+			print('Using default object sizes')
+		return object_sizes
+
+	for key in object_sizes.keys():
+		object_sizes[key] = (1, 1)
+
+	best_phi = 0
+	best_sizes = object_sizes.copy()
+
+	for i in range(max(grid_size) // 3):
+		graph = create_graph(num_objects, grid_size, len(object_sizes), object_sizes, stack_prob=0.0)
+		new_phi = cal_density(graph, grid_size)
+
+		if abs(new_phi - phi) > abs(best_phi - phi):
+			break
+
+		best_phi = new_phi
+		best_sizes = object_sizes.copy()
+			
+		for key in object_sizes.keys():
+			w, h = object_sizes[key]
+			object_sizes[key] = (w + 2, h + 2)
+
+	if verbose > 0:
+		print(f'phi: {best_phi:.3f} | uniform size: {best_sizes[0]}')
+
+	return best_sizes
