@@ -74,32 +74,32 @@ def is_in_env(coor, size, grid_size):
 		return False
 	return True
 
-def find_target_obj(x, node):
+def get_object_bellow(x, node):
 	i = (x[node, Indices.RELATION] == 1).nonzero(as_tuple=True)[0]
 	if len(i):
 		return i.item()
 	return None
 
-def find_start_obj(x, node):
+def get_object_above(x, node):
 	i = (x[:, Indices.RELATION.start + node] == 1).nonzero(as_tuple=True)[0]
 	if len(i):
 		return i.item()
 	return None
 
 def is_empty_object(x, node):
-	return find_start_obj(x, node) is None
+	return get_object_above(x, node) is None
 
-def is_stacked_on(x, node1, node2):
+def is_stacked_on_object(x, node1, node2):
 	if x[node1, Indices.RELATION.start + node2] == 0:
 		return False
 	return True
 
-def is_stacked_object(x, node):
-	return x[node, Indices.RELATION].sum() > 0
+def is_stacked(x, node):
+	return get_object_bellow(x, node) is not None
 
-def find_base_obj(x, node):
-	while is_stacked_object(x, node):
-		node = find_target_obj(x, node)
+def get_object_base(x, node):
+	while is_stacked(x, node):
+		node = get_object_bellow(x, node)
 	return node
 
 def get_obj_pos(x, node):
@@ -138,113 +138,6 @@ def get_node_poses(num_nodes):
 
     return positions
 
-def generate_random_coordinates(grid_size: tuple, sizes: list, max_attempts: int=100) -> list:
-	"""
-	Generate random coordinates for objects, restarting if a placement fails.
-
-	Args:
-		grid_size (int, int): Size of the table.
-		sizes (list of tuple): List of (height, width) for each object (must be odd numbers).
-		values (list of int): List of values to assign to the objects in the table.
-		max_attempts (int): Maximum number of attempts before restarting.
-		
-	Returns:
-		list of torch.Tensor: List of coordinates for the placed objects.
-	"""
-	for _ in range(max_attempts):  # Keep trying until all objects are successfully placed
-		table = np.zeros(grid_size, dtype=int)
-		success = True
-		coords = []
-
-		for i, size in enumerate(sizes):
-
-			placed = False
-			for _ in range(max_attempts):
-
-				x_min, x_max = size[0] // 2, grid_size[0] - size[0] // 2 - 1
-				y_min, y_max = size[1] // 2, grid_size[1] - size[1] // 2 - 1
-
-				# Generate random coordinates for the object's center
-				coor = torch.tensor([
-					random.randint(x_min, x_max),
-					random.randint(y_min, y_max)
-				], dtype=torch.float32)
-
-				# Check if the placement is valid
-				x_slice, y_slice = in_table_index(coor, size)
-				if table[x_slice, y_slice].sum() == 0:
-					table[x_slice, y_slice] = i + 1
-					coords.append(coor)
-					placed = True
-					break
-
-			if not placed:
-				success = False
-				break  # Restart placement process
-
-		if success:
-			return coords  # Successfully placed all objects
-
-	return None  # Failed to place all objects after max attempts
-
-def generate_random_coordinates_with_ratio(grid_size: tuple, sizes: list, ratio: float, max_attempts: int=100) -> list:
-	"""
-	Generate random coordinates for objects, ensuring a placement ratio across grid halves.
-
-	Args:
-		grid_size (int, int): Size of the table.
-		sizes (list of tuple): List of (height, width) for each object (must be odd numbers).
-		ratio (float): Proportion of objects to be placed in the left half of the grid (0 <= ratio <= 1).
-		max_attempts (int): Maximum number of attempts before restarting placement.
-		adjustment_factor (float): The amount to adjust the ratio if placement is impossible.
-
-	Returns:
-		list of torch.Tensor: List of coordinates for the placed objects.
-	"""
-	assert 0 <= ratio <= 1, "Ratio must be between 0 and 1"
-
-	for _ in range(max_attempts):  # Keep trying until all objects are successfully placed
-		table = np.zeros(grid_size, dtype=int)
-		success = True
-		coords = []
-
-		for i, size in enumerate(sizes):
-
-			placed = False
-			for _ in range(max_attempts):
-
-				# Determine whether to place in the left or right half based on the current ratio
-				x_min, x_max = size[0] // 2, grid_size[0] - size[0] // 2 - 1
-				# y_min, y_max = size[1] // 2, grid_size[1] - size[1] // 2 - 1
-
-				if random.random() < ratio:
-					y_min, y_max = size[1] // 2, grid_size[1] // 2 - 1
-				else:
-					y_min, y_max = grid_size[1] // 2, grid_size[1] - size[1] // 2 - 1
-
-				# Generate random coordinates for the object's center
-				coor = torch.tensor([
-					random.randint(x_min, x_max),
-					random.randint(y_min, y_max)
-				], dtype=torch.float32)
-
-				# Check if the placement is valid
-				x_slice, y_slice = in_table_index(coor, size)
-				if table[x_slice, y_slice].sum() == 0:
-					table[x_slice, y_slice] = i + 1
-					coords.append(coor)
-					placed = True
-					break
-
-			if not placed:
-				success = False
-				break  # Restart placement process
-
-		if success:
-			return coords  # Successfully placed all objects
-
-	return None  # Failed to place all objects after max attempts
-
 def is_stable(x, node1, node2):
     label1 = get_obj_label(x, node1)
     label2 = get_obj_label(x, node2)
@@ -274,8 +167,8 @@ def plot_graph(graph, grid_size, ax=None, fig_size=2.5, title=None, constraints=
 		coor_i = get_obj_pos(graph.x, i)
 		size_i = get_obj_size(graph.x, i)
 
-		if is_stacked_object(graph.x, i):
-			child = find_target_obj(graph.x, i)
+		if is_stacked(graph.x, i):
+			child = get_object_bellow(graph.x, i)
 			if child in unrendered_nodes:
 				unrendered_nodes.append(i)
 				continue
@@ -309,8 +202,8 @@ def plot_graph(graph, grid_size, ax=None, fig_size=2.5, title=None, constraints=
 		label_i = get_obj_label(graph.x, i)
 		coor_i = get_obj_pos(graph.x, i)
 		size_i = get_obj_size(graph.x, i)
-		if is_stacked_object(graph.x, i):
-			child = find_target_obj(graph.x, i)
+		if is_stacked(graph.x, i):
+			child = get_object_bellow(graph.x, i)
 			child_label = get_obj_label(graph.x, child)
 			if OBJECTS[label_i]['category'] == 'cat1' and OBJECTS[child_label]['category'] == 'cat3':
 				size_i = [size_i[0] // 4, size_i[1] // 4]
@@ -323,7 +216,92 @@ def plot_graph(graph, grid_size, ax=None, fig_size=2.5, title=None, constraints=
 	if title is not None:
 		ax.set_title(title)
 
-def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes: dict, labels=None, stack_prob: float=0.6, ratio: float=0.5, max_attempts: int=10) -> Data:
+def cal_density(graph, grid_size):
+	phi = 0
+	for i in range(graph.num_nodes):
+		size_i = get_obj_size(graph.x, i)
+		phi += (size_i[0] * size_i[1])
+
+	return phi / (grid_size[0] * grid_size[1])
+
+def x_to_edge_index(x):
+	edge_index = torch.tensor([], dtype=torch.long)
+	for i in range(len(x)):
+		for j in range(len(x)):
+			if x[i][Indices.RELATION.start+j] == 1:
+				edge_index = torch.cat((edge_index, torch.tensor([[i], [j]])), dim=1)
+	return edge_index
+
+def generate_random_coordinates(grid_size: tuple, sizes: list, side_assignments: list=None, max_attempts: int=100) -> list:
+	"""
+	Generate random coordinates for objects.
+
+	Args:
+		grid_size (tuple): Dimensions (height, width) of the grid.
+		sizes (list of tuple): List of (height, width) sizes (must be odd integers) for each object.
+		max_attempts (int): Maximum number of attempts.
+		side_assignments (list of str): List of 'left' or 'right' for each object.
+
+	Returns:
+		list of torch.Tensor: List of coordinates for the placed objects.
+	"""
+
+	for _ in range(max_attempts):  # Keep trying until all objects are successfully placed
+		table = np.zeros(grid_size, dtype=int)
+		success = True
+		coords = []
+
+		for i, size in enumerate(sizes):
+			placed = False
+			for _ in range(max_attempts):
+				x_min, x_max = size[0] // 2, grid_size[0] - size[0] // 2 - 1
+
+				# Determine bounds based on side assignment
+				if side_assignments is not None:
+					half_width = grid_size[1] // 2
+					if side_assignments[i] == 'left':
+						y_min, y_max = size[1] // 2, (grid_size[1]) // 3 - size[1] // 2 - 1
+					else:
+						y_min, y_max = (grid_size[1]*2) // 3 + size[1] // 2, grid_size[1] - size[1] // 2 - 1
+				else:
+					y_min, y_max = size[1] // 2, grid_size[1] - size[1] // 2 - 1
+
+				# Generate random coordinates for the object's center
+				coor = torch.tensor([
+					random.randint(x_min, x_max),
+					random.randint(y_min, y_max)
+				], dtype=torch.float32)
+
+				# Check if the placement is valid
+				x_slice, y_slice = in_table_index(coor, size)
+				if table[x_slice, y_slice].sum() == 0:
+					table[x_slice, y_slice] = i + 1
+					coords.append(coor)
+					placed = True
+					break
+
+			if not placed:
+				success = False
+				break  # Restart placement process
+
+		if success:
+			return coords  # Successfully placed all objects
+
+	return None  # Failed to place all objects after max attempts
+
+def create_graph(
+		num_nodes: int, 
+		grid_size: tuple, 
+		num_labels: int, 
+		object_sizes: dict, 
+		labels: list=None, 
+		stack_prob: float=0.6, 
+		max_attempts: int=10,
+		use_sides: bool=False,
+		prev_sides: list=None,
+		switch_prob: float=0.5,
+	) -> Data:
+
 	assert num_nodes >= 2
 
 	if max_attempts == 0:
@@ -334,8 +312,8 @@ def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes
 		label_flag = False
 		labels = [random.randint(0, num_labels-1) for _ in range(num_nodes)]
 		if np.sum([object_sizes[labels[id]][0]*object_sizes[labels[id]][1] for id in range(num_nodes)]) > grid_size[0]*grid_size[1]:
-			print('Man! The objects are too big!')
-			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, stack_prob, ratio, max_attempts-1)
+			print('Error: The combined object sizes exceed grid capacity')
+			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, stack_prob, max_attempts-1)
 	elif len(labels) != num_nodes:
 		raise ValueError('Number of labels must be equal to the number of nodes')
 	else:
@@ -354,7 +332,7 @@ def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes
 
 	random.shuffle(nodes)
 
-	# Random connection between edges
+	# Randomly create edges between nodes based on stacking probability
 	for node in nodes:
 		if random.random() < stack_prob:
 			node1 = node
@@ -364,83 +342,78 @@ def create_graph(num_nodes: int, grid_size: tuple, num_labels: int, object_sizes
 
 			if not is_stable(x_arr, node1, node2):
 				continue
+
+			# Avoid stacking multiple objects on top of the same base
 			if torch.sum(x_arr[:, Indices.RELATION.start + node2]) >= 1:
 				continue
 
 			edge_index = torch.cat([edge_index, torch.tensor([[node1], [node2]], dtype=torch.long)], dim=1)
 			x_arr[node1, Indices.RELATION.start + node2] = 1
 
+	base_nodes = [i for i in range(num_nodes) if not is_stacked(x_arr, i)]
+
+	# For target_graph: maybe switch side
+	side_assignments = None
+	if use_sides:
+		if prev_sides is None:
+			side_assignments_all = [random.choice(['left', 'right']) for _ in range(num_nodes)]
+		else:
+			side_assignments_all = []
+			for i in range(num_nodes):
+				if random.random() < switch_prob:
+					side = 'right' if prev_sides[i] == 'left' else 'left'
+					if i in base_nodes:
+						print(f'{i} switched to {side}')
+				else:
+					side = prev_sides[i]
+				side_assignments_all.append(side)
+		side_assignments = [side_assignments_all[i] for i in base_nodes]
+
 	# Allocate random positions to base nodes
-	base_sizes = [get_obj_size(x_arr, i) for i in range(num_nodes) if not is_stacked_object(x_arr, i)]
-
-	if ratio == 0.5:
-		coords = generate_random_coordinates(grid_size, base_sizes, 300)
-	else:
-		coords = generate_random_coordinates_with_ratio(grid_size, base_sizes, ratio, 300)
-
+	base_sizes = [get_obj_size(x_arr, i) for i in base_nodes]
+	coords = generate_random_coordinates(grid_size, base_sizes, side_assignments=side_assignments, max_attempts=300)
 	if coords is None:
 		print('Trying again!')
 		if label_flag:
-			return create_graph(num_nodes, grid_size, num_labels, object_sizes, labels, stack_prob, ratio, max_attempts-1)
+			return create_graph(
+				num_nodes=num_nodes,
+				grid_size=grid_size, 
+				num_labels=num_labels,
+				object_sizes=object_sizes,
+				labels=labels,
+				stack_prob=stack_prob,
+				max_attempts=max_attempts-1,
+				use_sides=use_sides,
+				prev_sides=prev_sides,
+				switch_prob=switch_prob,
+			)
 		else:
-			return create_graph(num_nodes, grid_size, num_labels, object_sizes, None, stack_prob, ratio, max_attempts-1)
+			return create_graph(
+				num_nodes=num_nodes,
+				grid_size=grid_size, 
+				num_labels=num_labels,
+				object_sizes=object_sizes,
+				labels=None,
+				stack_prob=stack_prob,
+				max_attempts=max_attempts-1,
+				use_sides=use_sides,
+				prev_sides=prev_sides,
+				switch_prob=switch_prob,
+			)
 	
 	unallocated_nodes = list(range(num_nodes))
-	for i in range(num_nodes):
-		if not is_stacked_object(x_arr, i):
-			x_arr[i][Indices.COORD] = coords.pop(0).clone()
-			unallocated_nodes.remove(i)
+	for i in base_nodes:
+		x_arr[i][Indices.COORD] = coords.pop(0).clone()
+		unallocated_nodes.remove(i)
 
 	while len(unallocated_nodes) > 0:
 		i = unallocated_nodes.pop(0)
-		if not is_stacked_object(x_arr, i):
+		if not is_stacked(x_arr, i):
 			raise ValueError('Unknown error in creating graph')
-		
-		target_node = find_target_obj(x_arr, i)
+		target_node = get_object_bellow(x_arr, i)
 		if target_node in unallocated_nodes:
 			unallocated_nodes.append(i)
 			continue
 		x_arr[i][Indices.COORD] = get_obj_pos(x_arr, target_node)
 
 	return Data(x=x_arr, edge_index=edge_index, pos=get_node_poses(num_nodes))
-
-def cal_density(graph, grid_size):
-	phi = 0
-	for i in range(graph.num_nodes):
-		size_i = get_obj_size(graph.x, i)
-		phi += (size_i[0] * size_i[1])
-
-	return phi / (grid_size[0] * grid_size[1])
-
-def get_obj_sizes(num_objects, grid_size, phi, verbose=0):
-	object_sizes = {k: v["size"] for k, v in OBJECTS.items()}
-
-	if phi == 'mix':
-		if verbose > 0:
-			print('Using default object sizes')
-		return object_sizes
-
-	for key in object_sizes.keys():
-		object_sizes[key] = (1, 1)
-
-	best_phi = 0
-	best_sizes = object_sizes.copy()
-
-	for i in range(max(grid_size) // 3):
-		graph = create_graph(num_objects, grid_size, len(object_sizes), object_sizes, stack_prob=0.0)
-		new_phi = cal_density(graph, grid_size)
-
-		if abs(new_phi - phi) > abs(best_phi - phi):
-			break
-
-		best_phi = new_phi
-		best_sizes = object_sizes.copy()
-			
-		for key in object_sizes.keys():
-			w, h = object_sizes[key]
-			object_sizes[key] = (w + 2, h + 2)
-
-	if verbose > 0:
-		print(f'phi: {best_phi:.3f} | uniform size: {best_sizes[0]}')
-
-	return best_sizes
