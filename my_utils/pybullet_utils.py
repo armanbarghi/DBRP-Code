@@ -133,7 +133,7 @@ class Camera:
 		u, v = self.project_points(world_pts)
 		u_min, u_max = np.floor(u.min()).astype(int), np.ceil(u.max()).astype(int)
 		v_min, v_max = np.floor(v.min()).astype(int), np.ceil(v.max()).astype(int)
-		return (u_min, u_max, v_min, v_max)
+		return (u_min, v_min, u_max, v_max)
 
 	def show_img(self, image, title=''):
 		fig, ax = plt.subplots(figsize=(self.width / 100, self.height / 100), dpi=100)
@@ -153,7 +153,7 @@ class Camera:
 		# Subplot 2: Image with bounding boxes
 		axs[1].imshow(image)
 		axs[1].set_title("Image with Bounding Boxes")
-		for i, (u_min, u_max, v_min, v_max) in enumerate(boxes):
+		for i, (u_min, v_min, u_max, v_max) in enumerate(boxes):
 			rect = patches.Rectangle(
 				(u_min, v_min), u_max - u_min, v_max - v_min,
 				linewidth=2, edgecolor=color, facecolor='none'
