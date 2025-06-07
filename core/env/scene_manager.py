@@ -342,83 +342,93 @@ def create_scene(
 	return x_arr
 
 def plot_scene(
-		scene: torch.Tensor, 
+		scene_x: torch.Tensor, 
 		grid_size: Tuple[int, int], 
 		ax=None, 
 		fig_size: float=2.5, 
 		title: Optional[str]=None, 
-		constraints: torch.Tensor=torch.tensor([], dtype=torch.long)
+		markers: torch.Tensor=torch.tensor([], dtype=torch.long)
 	):
 	"""
-	Plots the current state of the scene on a 2D grid.
+	Plots the current state of the scene_x on a 2D grid.
 
 	Args:
-		scene: The scene tensor [N, D] containing object information.
+		scene_x: The scene_x tensor [N, D] containing object information.
 		grid_size: Dimensions (height, width) of the grid.
 		ax: Matplotlib axes object to plot on. If None, a new figure and axes are created.
 		fig_size: Base size for the figure.
 		title: Optional title for the plot.
-		constraints: Optional tensor [M, 2] of (x, y) coordinates to highlight in red.
+		markers: Optional tensor [M, 2] of (x, y) coordinates to highlight in red.
 	"""
 	if ax is None:
 		fig, ax = plt.subplots(1, 1, figsize=(fig_size, fig_size * (grid_size[1] / grid_size[0])))
 
-	N = scene.shape[0]
+	N = scene_x.shape[0]
 	color_by_label = {k + 1: v['color'] for k, v in OBJECTS.items()}
 	color_by_label[0] = 'white'  # Background
-	color_by_label[max(color_by_label.keys()) + 1] = 'red'  # Constraints
+	color_by_label[max(color_by_label.keys()) + 1] = 'red'  # markers
 
-	all_sizes = scene[:, Indices.SIZE]
+	all_sizes = scene_x[:, Indices.SIZE]
 	all_labels = sorted(color_by_label.keys())
 	color_list = [color_by_label[label] for label in all_labels]
 
-	mapped_table = -1 * np.ones(grid_size, dtype=int)
+	# Initialize display table
+	display_table = torch.zeros(grid_size, dtype=torch.long)
+	
+	# Render objects in dependency order (base objects first)
 	unrendered_objs = list(range(N))
 	while len(unrendered_objs) > 0:
 		i = unrendered_objs.pop(0)
-		label_i = int(scene[i, Indices.LABEL].item())
-		coor_i = scene[i, Indices.COORD].tolist()
-		h_i, w_i = scene[i, Indices.SIZE].tolist()
+		label_i = int(scene_x[i, Indices.LABEL].item())
+		coor_i = scene_x[i, Indices.COORD].tolist()
+		h_i, w_i = scene_x[i, Indices.SIZE].tolist()
 
-		if is_stacked(scene, i):
-			child = get_object_below(scene, i)
+		if is_stacked(scene_x, i):
+			child = get_object_below(scene_x, i)
 			if child in unrendered_objs:
 				unrendered_objs.append(i)
 				continue
 
-			child_label = int(scene[child, Indices.LABEL].item())
+			# Apply size reduction rules for stacked objects
+			child_label = int(scene_x[child, Indices.LABEL].item())
 			if OBJECTS[label_i]['category'] == 'cat1' and OBJECTS[child_label]['category'] == 'cat3':
 				h_i, w_i = h_i // 4, w_i // 4
 			elif torch.all(all_sizes == all_sizes[0]):
 				h_i, w_i = h_i // 2, w_i // 2
 
-		mapped_table[get_patch_slice(coor_i, [h_i, w_i], grid_size)] = label_i + 1
+		# Draw object footprint
+		display_table[get_patch_slice(coor_i, [h_i, w_i], grid_size)] = label_i + 1
 
-	if constraints.numel() > 0:
-		mapped_table[constraints[:,0], constraints[:,1]]  = list(color_by_label.keys())[-1]
+	# Add constraint highlights
+	if markers.numel() > 0:
+		display_table[markers[:,0], markers[:,1]] = list(color_by_label.keys())[-1]
 
+	# Create and display the plot
 	cmap = ListedColormap(color_list)
-	bounds = np.arange(len(color_list)+1)
+	bounds = np.arange(len(color_list) + 1)
 	norm = BoundaryNorm(bounds, cmap.N)
-	ax.imshow(mapped_table, cmap=cmap, norm=norm, origin='upper')
-	ax.tick_params(which='minor', bottom=False, left=False)
+	ax.imshow(display_table.numpy(), cmap=cmap, norm=norm, origin='upper', interpolation='none')
 	ax.set_xticks([])
 	ax.set_yticks([])
 
+	# Add object ID labels at top-left corner of each object
 	for i in range(N):
-		label_i = int(scene[i, Indices.LABEL].item())
-		x_i, y_i = scene[i, Indices.COORD].tolist()
-		h_i, w_i = scene[i, Indices.SIZE].tolist()
-		if is_stacked(scene, i):
-			child = get_object_below(scene, i)
-			child_label = int(scene[child, Indices.LABEL].item())
+		label_i = int(scene_x[i, Indices.LABEL].item())
+		x_i, y_i = scene_x[i, Indices.COORD].tolist()
+		h_i, w_i = scene_x[i, Indices.SIZE].tolist()
+
+		# Apply same size reduction for text positioning
+		if is_stacked(scene_x, i):
+			child = get_object_below(scene_x, i)
+			child_label = int(scene_x[child, Indices.LABEL].item())
 			if OBJECTS[label_i]['category'] == 'cat1' and OBJECTS[child_label]['category'] == 'cat3':
 				h_i, w_i = h_i // 4, w_i // 4
 			elif torch.all(all_sizes == all_sizes[0]):
 				h_i, w_i = h_i // 2, w_i // 2
 
+		# Place text at top-left corner of the object's footprint
 		ax.text(y_i - w_i // 2, x_i - h_i // 2, str(i),
-				ha='center', va='center', color='black')
+				ha='center', va='center', color='black', fontweight='bold')
 
 	if title is not None:
 		ax.set_title(title)
@@ -652,7 +662,7 @@ class SceneManager:
 	def __init__(
 			self, mode: str, 
 			num_objects: int, grid_size: Tuple[int, int], 
-			static_stack: bool=False, terminal_cost: bool=False, 
+			static_stack: bool=False, terminal_cost: bool=True, 
 			phi: Union[str, float]='mix', verbose: int=1
 		):
 		self.mode = mode
@@ -677,7 +687,8 @@ class SceneManager:
 		
 		self.normalization_factor = 1 / min(self.grid_size)
 		self.manipulator = self.manipulator_init_pos.clone() # Current manipulator position
-		self.pp_cost = 0.2 # Per-pickup cost for actions
+		self.pp_cost = 0.2 			# Per-pickup cost for actions
+		self._P = 2*(H + W) - 4 	# Number of indexes in the mobile mode
 
 		# These will be initialized in reset()
 		self.current_x: torch.Tensor
@@ -688,8 +699,6 @@ class SceneManager:
 		self.stability_mask: torch.Tensor
 		self._i: torch.Tensor # For _build_table
 		self._j: torch.Tensor # For _build_table
-		self._P: int # Boundary perimeter for mobile mode
-		self._boundary_coords: torch.Tensor # All boundary coordinates for mobile mode
 
 	def init(self):
 		"""
@@ -726,13 +735,11 @@ class SceneManager:
 		self._i = torch.arange(H).view(1,H,1)
 		self._j = torch.arange(W).view(1,1,W)
 
-		# Boundary maps for mobile manipulator
-		self._make_boundary_maps()
-
 		# Build the initial tables
 		self.current_table = self._build_table(self.current_x)
 		self.target_table = self._build_table(self.target_x)
 
+		# Initialize manipulator position
 		self.manipulator = self.manipulator_init_pos.clone()
 
 	def create_scene(self, labels: Optional[List[int]]=None, use_stack: bool=True, use_sides: bool=False) -> torch.Tensor:
@@ -865,8 +872,8 @@ class SceneManager:
 		if self.verbose > 0:
 			print(f'Manipulator at {manip}')
 
-		# Build manipulator constraints
-		constraints = torch.tensor([], dtype=torch.long)
+		# Build manipulator markers
+		markers = torch.tensor([], dtype=torch.long)
 		if show_manipulator:
 			h, w = (5, 5)
 			hh, hw = h//2, w//2
@@ -881,7 +888,7 @@ class SceneManager:
 			mask = (
 				(pts[:,0]>=0) & (pts[:,0]<H) & (pts[:,1]>=0) & (pts[:,1]<W)
 			)
-			constraints = pts[mask]
+			markers = pts[mask]
 
 		# Draw side-by-side
 		scale = max(self.grid_size)/min(self.grid_size)
@@ -889,7 +896,7 @@ class SceneManager:
 			1, 2,
 			figsize=(fig_size*2*scale, fig_size)
 		)
-		plot_scene(current, self.grid_size, ax1, constraints=constraints)
+		plot_scene(current, self.grid_size, ax1, markers=markers)
 		plot_scene(target, self.grid_size, ax2)
 		plt.tight_layout()
 		plt.show()
@@ -1217,71 +1224,31 @@ class SceneManager:
 		return bool(occupied.item())
 
 	## --mobile manipulator--
-	def _make_boundary_maps(self):
+	def get_boundary_index(self, boundary_coord: torch.Tensor) -> int:
 		"""
-		Precomputes the coordinates of the grid boundary and maps them to 1D indices.
-		Used for calculating manipulator movement in 'mobile' mode.
-		"""
-		H, W = self.grid_size
-		P = 2*(H + W) - 4
-		self._P = P
-
-		# Build a 1D tensor of all boundary coords in walking order:
-		#  top row → right col → bottom row → left col
-		coords = torch.empty((P,2), dtype=torch.long)
-		# top edge (0, 0..W-1)
-		coords[0:W] = torch.stack([torch.zeros(W, dtype=torch.long),
-								torch.arange(W)], dim=1)
-		# right edge (1..H-1, W-1)
-		coords[W:W+H-1] = torch.stack([torch.arange(1, H),
-									torch.full((H-1,), W-1)], dim=1)
-		# bottom edge (H-1, W-2..0)
-		coords[W+H-1:W+H-1+W-1] = torch.stack([torch.full((W-1,), H-1),
-											torch.arange(W-2, -1, -1)], dim=1)
-		# left edge (H-2..1, 0)
-		coords[W+H-1+W-1:] = torch.stack([torch.arange(H-2, 0, -1),
-										torch.zeros(H-2, dtype=torch.long)], dim=1)
-
-		self._boundary_coords = coords  # shape [P,2]
-
-	def boundary_idx(self, coord: torch.Tensor) -> int:
-		"""
-		Given a boundary (x,y) coordinate, return its index in [0..P).
+		Given a boundary (b_x,b_y) coordinate, return its index in [0..P).
 		Assumes coord is exactly on the boundary.
 		Args:
-			coord: A torch.Tensor of shape [2] representing (x, y) coordinates.
+			coord: A torch.Tensor of shape [2] representing (b_x, b_y) coordinates.
 		Returns:
 			The 1D index of the coordinate on the boundary.
 		"""
-		x, y = coord.tolist()
 		H, W = self.grid_size
+		b_x, b_y = boundary_coord.tolist()
 
 		# top row
-		if x == 0:
-			return y
+		if b_x == 0 and b_y < W-1:
+			return b_y
 		# right col
-		if y == W-1:
-			return W + (x - 1)
+		if b_y == W-1 and b_x < H-1:
+			return W + b_x - 1
 		# bottom row
-		if x == H-1:
-			return W + (H - 1) + (W-1 - y)
+		if b_x == H-1:
+			return W + (H - 1) + (W - 1 - b_y)
 		# left col
-		# else y == 0
-		return W + (H - 1) + (W - 1) + (H - 1 - x)
+		return self._P - b_x + 1
 
-	def boundary_dist(self, b1: int, b2: int) -> float:
-		"""
-		Calculates the circular distance between two indices on the boundary ring.
-		Args:
-			b1: First boundary index.
-			b2: Second boundary index.
-		Returns:
-			The shortest distance along the boundary.
-		"""
-		d = abs(b1 - b2)
-		return float(min(d, self._P - d))
-
-	def cal_manipulator_movement(self, coord_to: torch.Tensor) -> float:
+	def cal_manipulator_cost(self, coord_to: torch.Tensor) -> float:
 		"""
 		Calculates the cost of moving the manipulator from its current position
 		(self.manipulator) to `coord_to`, and updates self.manipulator.
@@ -1306,39 +1273,32 @@ class SceneManager:
 			return dist * self.normalization_factor
 
 		# --- mobile mode ---
-		# compute ring index of current manipulator
-		b_from = self.boundary_idx(self.manipulator)
-
-		# candidate projections on each side: top, right, bottom, left
 		x, y = coord_to
-		candidates = torch.stack([
-			torch.stack([torch.zeros(1, dtype=torch.long),      y.view(1)]),   # top (0, y)
-			torch.stack([    x.view(1),    torch.full((1,), W-1)]),            # right (x, W-1)
-			torch.stack([torch.full((1,), H-1), y.view(1)]),                  # bottom (H-1, y)
-			torch.stack([    x.view(1),    torch.zeros(1, dtype=torch.long)]), # left (x, 0)
-		], dim=0).squeeze(2)  # shape [4,2]
 
-		# distances (in grid steps) straight to each side
-		edge_dists = torch.tensor([
-			x, 			# top
-			(W-1 - y),	# right
-			(H-1 - x),	# bottom
-			y],			# left
-			dtype=torch.long
-		)
-		best_idx = torch.argmin(edge_dists).item()
+		# Map each edge to its boundary point and distance
+		edge_projections = {
+			'top':    (torch.tensor([0,   y], dtype=torch.long), x    ),
+			'right':  (torch.tensor([x, W-1], dtype=torch.long), W-1-y),
+			'bottom': (torch.tensor([H-1, y], dtype=torch.long), H-1-x),
+			'left':   (torch.tensor([x,   0], dtype=torch.long), y    )
+		}
 
-		# pick that boundary point
-		best_pt = candidates[best_idx]
-		b_to    = self.boundary_idx(best_pt)
-		dist    = self.boundary_dist(b_from, b_to)
+		# Find the closest edge
+		closest_edge = min(edge_projections.keys(), key=lambda edge: edge_projections[edge][1])
+		best_pt, _ = edge_projections[closest_edge]
 
-		# update manipulator to that boundary coord
-		self.manipulator = best_pt.to(torch.long)
+		# Calculate ring distance and update manipulator
+		b_from = self.get_boundary_index(self.manipulator)
+		b_to   = self.get_boundary_index(best_pt)
+
+		d = abs(b_from - b_to)
+		dist = float(min(d, self._P - d))
+
+		self.manipulator = best_pt
 		return dist * self.normalization_factor
 
 	## --manipulation functions--
-	def move_obj_with_stacked_ones(self, obj: int, new_center: torch.Tensor):
+	def move_object_chain(self, obj: int, new_center: torch.Tensor):
 		"""
 		Moves `obj` (and any objects stacked on it, recursively) to `new_center`.
 		This is a direct update of the object's coordinates in the internal state.
@@ -1372,7 +1332,7 @@ class SceneManager:
 			The cost of the move action.
 		"""
 		if self.is_invalid_center(coord, start_obj):
-			raise ValueError(f'occupied {coord.numpy()}')
+			raise ValueError(f'Invalid placement: position {coord.numpy()} is occupied or out of bounds')
 
 		prev_below = get_object_below(self.current_x, start_obj)
 		if prev_below is None: 
@@ -1381,19 +1341,22 @@ class SceneManager:
 		else:
 			# Remove any old stacking-relation from the object below
 			self.current_x[start_obj][Indices.RELATION.start+prev_below] = 0
-		
-		# Calculate manipulator movement costs
-		prev_coord = self.current_x[start_obj, Indices.COORD]
-		cost_1 = self.cal_manipulator_movement(prev_coord) # Cost to move manipulator to start_obj
 
-		# Calculate manipulator movement costs
-		self.move_obj_with_stacked_ones(start_obj, coord)
-		cost_2 = self.cal_manipulator_movement(coord) # Cost to move manipulator from start_obj to new coord
-		
+		# -- Calculate manipulator movement costs --
+		cost = 0.0
+
+		# Cost of moving manipulator to start_obj
+		prev_coord = self.current_x[start_obj, Indices.COORD]
+		cost += self.cal_manipulator_cost(prev_coord)
+
+		# Cost of moving manipulator from prev_coord to coord
+		self.move_object_chain(start_obj, coord)
+		cost += self.cal_manipulator_cost(coord)
+
 		# Redraw the object's footprint at its new position
 		self._draw_to_table(start_obj)
 
-		return cost_1 + cost_2
+		return cost
 
 	def stack_func(self, start_obj: int, target_obj: int) -> float:
 		"""
@@ -1412,32 +1375,34 @@ class SceneManager:
 			raise ValueError(f'not stable {start_obj} -> {target_obj}')
 
 		# Target‐empty check (no one currently sits on target_obj)
-		rel = self.current_x[:, Indices.RELATION]            # [N, N] one‑hot
+		rel = self.current_x[:, Indices.RELATION]
 		if rel[:, target_obj].any():
 			raise ValueError(f'obj {target_obj} is not empty')
 
-		# Remove start_obj from its previous base's footprint if it was a base object
 		prev_below = get_object_below(self.current_x, start_obj)
 		if prev_below is None:
+			# start_obj is a base object, so remove its footprint before moving
 			self._erase_from_table(start_obj)
 		else:
-			# Remove the old stacking relation
+			# Remove any old stacking-relation from the object below
 			self.current_x[start_obj][Indices.RELATION.start+prev_below] = 0
 
-		# Calculate manipulator movement costs
+		# -- Calculate manipulator movement costs --
+		cost = 0.0
+
+		# Cost of moving manipulator to start_obj
 		prev_coord = self.current_x[start_obj, Indices.COORD]
-		cost_1 = self.cal_manipulator_movement(prev_coord) # Cost to move manipulator to start_obj
-		
+		cost += self.cal_manipulator_cost(prev_coord)
+
 		# Stack start_obj on top of target_obj by updating relation
 		self.current_x[start_obj][Indices.RELATION.start+target_obj] = 1
 
-		# Move start_obj + any objects on top of it to the destination (target_obj's coordinate)
+		# Cost of moving manipulator from prev_coord to destination
 		destination  = self.current_x[target_obj, Indices.COORD]
-		self.move_obj_with_stacked_ones(start_obj, destination)
+		self.move_object_chain(start_obj, destination)
+		cost += self.cal_manipulator_cost(destination)
 
-		cost_2 = self.cal_manipulator_movement(destination) # Cost to move manipulator to new position
-
-		return cost_1 + cost_2
+		return cost
 
 	## --empty positions and objects--
 	def get_empty_objs(self, ref_obj: int, n: int=1) -> List[int]:
@@ -1834,7 +1799,7 @@ class SceneManager:
 		if self.is_terminal_state():
 			if self.terminal_cost:
 				# Add cost for manipulator to return to initial position
-				cost += self.cal_manipulator_movement(self.manipulator_init_pos) * self.normalization_factor
+				cost += self.cal_manipulator_cost(self.manipulator_init_pos)
 			self.manipulator = self.manipulator_init_pos.clone()
 			terminated = True
 
