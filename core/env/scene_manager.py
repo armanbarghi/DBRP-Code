@@ -501,54 +501,89 @@ def copy_state(state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
 	}
 
 ## Env utility functions
-def show_valid_score_map(env: 'SceneManager', obj: int):
+def show_valid_score_map(
+	env: 'SceneManager',
+	obj: int,
+	selected_positions: torch.Tensor = None
+	):
 	"""
-	Displays two plots:
-	1. A boolean mask indicating all valid centers for placing `obj`.
-	2. A heatmap of inverted scores at valid centers, where lower (darker) values are better.
+	Displays three plots:
+	1. A boolean mask of valid centers, with selected positions highlighted.
+	2. A heatmap of inverted scores across all centers.
+	3. A heatmap of inverted scores at only the valid centers.
 
 	Args:
 		env: The SceneManager environment instance.
-		obj: The ID of the object for which to calculate valid placements and scores.
+		obj: The ID of the object.
+		selected_positions (torch.Tensor, optional): A tensor of shape [N, 2]
+			containing the selected (y, x) coordinates to highlight.
 	"""
-	H, W   = env.grid_size
+	all_centers = torch.ones(env.grid_size, dtype=torch.float32).nonzero(as_tuple=False)
 
-	valid_mask = env.valid_center_mask(obj)                 # [H,W] bool
-	
-	valid_centers = torch.nonzero(valid_mask, as_tuple=False)     # [M,2]
-	if valid_centers.numel() == 0:
-		# No valid placements: return empty mask and zero map
-		print(f"No valid placements for object {obj}")
-		fig, axs = plt.subplots(1, 2, figsize=(8, 4))
-		axs[0].imshow(torch.zeros((H,W), dtype=torch.bool))
-		axs[0].set_title('Valid Map (None)')
-		axs[1].imshow(torch.zeros((H,W), dtype=torch.float32))
-		axs[1].set_title('Valid Score Map (None)')
-		for ax in axs:
-			ax.axis('off')
-		plt.show()
-		return
-
-	# Compute raw scores at each center
-	raw_scores = env.score(valid_centers, obj)
-
-	# Invert scores (lower score is better)
+	# Compute raw scores (lower is better) and invert them (higher is better)
+	raw_scores = env.score(all_centers, obj)
 	max_score = raw_scores.max()
-	inverted  = max_score - raw_scores
+	inverted_scores = max_score - raw_scores
+	score_map = torch.zeros(env.grid_size, dtype=torch.float32)
+	score_map[all_centers[:, 0], all_centers[:, 1]] = inverted_scores
 
-	# Scatter into a full [H,W] map
-	valid_score_map = torch.zeros((H, W), dtype=torch.float32)
-	xi, yi    = valid_centers[:,0], valid_centers[:,1]
-	valid_score_map[xi, yi] = inverted	# [H,W] float
+	# Get valid mask and create the valid score map
+	valid_mask = env.valid_center_mask(obj)
+	valid_score_map = torch.zeros(env.grid_size, dtype=torch.float32)
+	valid_score_map[valid_mask] = score_map[valid_mask]
 
-	fig, axs = plt.subplots(1, 2, figsize=(8, 4))
-	axs[0].imshow(valid_mask.cpu().numpy())
-	axs[0].set_title(f'Valid Map for obj {obj}')
-	axs[1].imshow(valid_score_map.cpu().numpy())
-	axs[1].set_title(f'Valid Score Map for obj {obj}')
+	# Determine the shared min and max for consistent color scaling across plots.
+	# We use the full score_map as the reference for the color range.
+	vmin = score_map.min().item()
+	vmax = score_map.max().item()
+
+	# --- Plotting ---
+	fig, axs = plt.subplots(1, 3, figsize=(8, 3))
+
+	# Plot 1: Valid Map with highlighted selected positions
+	axs[0].imshow(valid_mask.cpu().numpy(), interpolation='none')
+	axs[0].set_title('Valid Map')
+
+	# Overlay the selected positions if they are provided
+	if selected_positions is not None and selected_positions.numel() > 0:
+		# Convert to numpy and handle potential GPU tensor
+		pos_np = selected_positions.cpu().numpy()
+		# Use scatter to plot points. Note the coordinate order:
+		# scatter(x, y) maps to scatter(column, row)
+		axs[0].scatter(
+			pos_np[:, 1],  # x-coordinates (columns)
+			pos_np[:, 0],  # y-coordinates (rows)
+			c='crimson',   # A bright color to stand out
+			marker='x',    # A distinct marker
+			s=50,          # Marker size
+			linewidth=1.5
+		)
+		axs[0].set_title('Valid Map & Selections')
+
+	# Plot 2: Score Map
+	axs[1].imshow(
+		score_map.cpu().numpy(),
+		interpolation='none',
+		vmin=vmin,  # Apply shared vmin
+		vmax=vmax   # Apply shared vmax
+	)
+	axs[1].set_title('Full Score Map')
+
+	# Plot 3: Valid Score Map
+	im2 = axs[2].imshow(
+		valid_score_map.cpu().numpy(),
+		interpolation='none',
+		vmin=vmin,  # Apply shared vmin
+		vmax=vmax   # Apply shared vmax
+	)
+	axs[2].set_title('Valid Score Map')
+	fig.colorbar(im2, ax=axs[2], fraction=0.046, pad=0.04)
+
 	for ax in axs:
 		ax.axis('off')
 
+	fig.suptitle(f"Object {obj} Placement Analysis", fontsize=16)
+	plt.tight_layout(rect=[0, 0, 1, 0.95]) # Adjust layout for suptitle
 	plt.show()
 
 def draw_dependency_graph(env: 'SceneManager', fig_size: Tuple[float, float]=(2.5, 2.5)):
@@ -643,7 +678,6 @@ class SceneManager:
 		self.normalization_factor = 1 / min(self.grid_size)
 		self.manipulator = self.manipulator_init_pos.clone() # Current manipulator position
 		self.pp_cost = 0.2 # Per-pickup cost for actions
-		self.punish_cost = 100 # Cost for invalid actions
 
 		# These will be initialized in reset()
 		self.current_x: torch.Tensor
@@ -1329,7 +1363,6 @@ class SceneManager:
 		"""
 		Executes a 'move' action for `start_obj` to `coord`.
 		Calculates the cost of the move, updates the scene state and manipulator position.
-		Handles invalid placements by returning `punish_cost`.
 
 		Args:
 			start_obj: The index of the object to move.
@@ -1339,8 +1372,7 @@ class SceneManager:
 			The cost of the move action.
 		"""
 		if self.is_invalid_center(coord, start_obj):
-			print(f'occupied {coord.numpy()}')
-			return self.punish_cost
+			raise ValueError(f'occupied {coord.numpy()}')
 
 		prev_below = get_object_below(self.current_x, start_obj)
 		if prev_below is None: 
@@ -1367,7 +1399,6 @@ class SceneManager:
 		"""
 		Executes a 'stack' action: `start_obj` is stacked on `target_obj`.
 		Calculates the cost of the stack, updates the scene state and manipulator position.
-		Handles invalid stacks (stability, target occupied) by returning `punish_cost`.
 
 		Args:
 			start_obj: The index of the object to stack.
@@ -1378,22 +1409,15 @@ class SceneManager:
 		"""
 		# Stability check
 		if not self.stability_mask[start_obj, target_obj]:
-			print(f'not stable {start_obj} -> {target_obj}')
-			return self.punish_cost
+			raise ValueError(f'not stable {start_obj} -> {target_obj}')
 
 		# Target‐empty check (no one currently sits on target_obj)
 		rel = self.current_x[:, Indices.RELATION]            # [N, N] one‑hot
 		if rel[:, target_obj].any():
-			print(f'obj {target_obj} is not empty')
-			return self.punish_cost
-
-		# Already-stacked check (if start_obj is already on target_obj)
-		prev_below = get_object_below(self.current_x, start_obj)
-		if prev_below == target_obj:
-			print(f'already stacked {start_obj} -> {target_obj}')
-			return self.punish_cost
+			raise ValueError(f'obj {target_obj} is not empty')
 
 		# Remove start_obj from its previous base's footprint if it was a base object
+		prev_below = get_object_below(self.current_x, start_obj)
 		if prev_below is None:
 			self._erase_from_table(start_obj)
 		else:
@@ -1451,13 +1475,14 @@ class SceneManager:
 	def get_empty_positions(self, ref_obj: int, n: int=1, sort: bool=False) -> torch.LongTensor:
 		"""
 		Returns up to `n` valid center positions (x, y) for placing `ref_obj`.
-		If sort=True, returns the positions sorted by proximity to the object's
-		target position and occupancy score (lower is better).
+		If sort=False, it returns a random shuffle of valid positions.
+		If sort=True, it performs a weighted random sample where positions
+		with better (lower) scores have a higher probability of being chosen.
 
 		Args:
 			ref_obj: The index of the object for which to find empty positions.
 			n: The maximum number of positions to return.
-			sort: If True, sort positions by score (best first).
+			sort: If True, performs weighted sampling based on score.
 
 		Returns:
 			A torch.LongTensor of shape [K, 2] where K <= n.
@@ -1468,19 +1493,40 @@ class SceneManager:
 		# Extract coordinates of all True positions
 		valid_coords = mask.nonzero(as_tuple=False)  # [K, 2]
 
-		# Shuffle if not sorting
-		if not sort:
-			perm  = torch.randperm(valid_coords.size(0))
-			valid_coords = valid_coords[perm]
+		if valid_coords.size(0) == 0:
+			return torch.LongTensor([])
 
-		# Optionally sort by score
-		elif valid_coords.size(0) > 0:
-			sc    = self.score(valid_coords, ref_obj)    # [K] composite scores
-			order = torch.argsort(sc, dim=0)            # ascending → best first
-			valid_coords = valid_coords[order]
+		# If we need fewer positions than available, proceed with selection
+		if valid_coords.size(0) > n:
+			if not sort:
+				# Random shuffle for non-sort mode
+				perm = torch.randperm(valid_coords.size(0))
+				chosen_indices = perm[:n]
+				chosen = valid_coords[chosen_indices]
+			else:
+				# Calculate scores (lower is better)
+				sc = self.score(valid_coords, ref_obj)  # [K] composite scores
 
-		# Take top n
-		chosen = valid_coords[:n]
+				# Convert scores to weights (higher is better)
+				# We invert the scores so that low scores get high weights.
+				# `max(sc) - sc` makes the best score (lowest) have the highest weight.
+				# We add a small epsilon for numerical stability if all scores are identical.
+				weights = (torch.max(sc) - sc) + 1e-6
+
+				# Sample `n` indices using the weights.
+				# `replacement=False` ensures we don't pick the same position twice.
+				sampled_indices = torch.multinomial(weights, num_samples=n, replacement=False)
+
+				# Select the coordinates based on the sampled indices
+				chosen = valid_coords[sampled_indices]
+		else:
+			# If n is larger or equal to all available positions, return them all.
+			# Optionally shuffle them if not in sort mode.
+			if not sort:
+				perm = torch.randperm(valid_coords.size(0))
+				valid_coords = valid_coords[perm]
+			chosen = valid_coords
+
 		return chosen
 
 	def get_empty_positions_with_target(self, ref_obj: int, n: int = 1, sort: bool = False) -> torch.LongTensor:
@@ -1553,7 +1599,6 @@ class SceneManager:
 		"""
 		H, W = self.grid_size
 		h, w = self.current_x[obj, Indices.SIZE]
-		hh, hw = h // 2, w // 2
 
 		# Build a boolean map of all “other-object” occupancy.
 		# 1.0 where the grid is occupied by someone ≠ obj, else 0.0.
@@ -1582,8 +1627,8 @@ class SceneManager:
 		pts = centers.long()
 		if pts.ndim == 1:
 			pts = pts.view(1, 2)
-		ti = (pts[:, 0] - hh).clamp(0, H2 - 1)
-		tj = (pts[:, 1] - hw).clamp(0, W2 - 1)
+		ti = (pts[:, 0] - h // 2).clamp(0, H2 - 1)
+		tj = (pts[:, 1] - w // 2).clamp(0, W2 - 1)
 
 		# Gather and normalize
 		occ_counts = counts[ti, tj]	# [M]
@@ -1594,7 +1639,8 @@ class SceneManager:
 		"""
 		Vectorized composite score for placing `obj` at each center in `centers`.
 		The score is a combination of the occupied fraction of the footprint
-		in the target scene and the normalized Euclidean distance to the target center.
+		in the target scene and the normalized Euclidean distance to the center 
+		between the current and target positions.
 		Lower scores are better.
 
 		Args:
@@ -1607,13 +1653,15 @@ class SceneManager:
 		# Occupancy fraction at each placement
 		occ_frac = self.occupied_score(centers, obj)  # [M]
 
-		# Euclidean distance from each center to the target center
-		tgt_center = self.target_x[obj, Indices.COORD]    # [2]
-		diffs      = centers.float() - tgt_center.float().unsqueeze(0) # [M,2]
+		# Euclidean distance from each center to the mid
+		cur_center = self.current_x[obj, Indices.COORD]  # [2]
+		tgt_center = self.target_x[obj, Indices.COORD]   # [2]
+		mid = (cur_center + tgt_center) / 2.0            # [2]
 
-		distances  = torch.norm(diffs, dim=1)                     # [M]
+		diffs = centers.float() - mid.float().unsqueeze(0)		# [M,2]
+		distances  = torch.norm(diffs, dim=1)                   # [M]
 
-		return occ_frac + distances * self.normalization_factor   # [M]
+		return occ_frac + distances * self.normalization_factor	# [M]
 
 	## --valid actions--
 	def get_valid_stacks(self) -> List[int]:
@@ -1770,18 +1818,16 @@ class SceneManager:
 		cost = 0.0
 		terminated = False
 
+		rel = self.current_x[:, Indices.RELATION]
+
 		if action_type == 'move':
-			if self.static_stack and get_object_above(self.current_x, start_obj):
-				print(f'can not move non-empty objects')
-				cost += self.punish_cost
-			else:
-				cost += self.move_func(start_obj, coord)
+			if self.static_stack and rel[:, start_obj].any():
+				raise ValueError(f'can not move non-empty objects')
+			cost += self.move_func(start_obj, coord)
 		elif action_type == 'stack':
-			if self.static_stack and get_object_above(self.current_x, start_obj):
-				print(f'can not stack non-empty objects')
-				cost += self.punish_cost
-			else:
-				cost += self.stack_func(start_obj, target_obj)
+			if self.static_stack and rel[:, start_obj].any():
+				raise ValueError(f'can not stack non-empty objects')
+			cost += self.stack_func(start_obj, target_obj)
 
 		cost += self.pp_cost # Add per-pickup cost
 
