@@ -1,0 +1,203 @@
+{
+    "scene_id": 33,
+    "phi": 0.1875,
+    "num_objects": 6,
+    "grid_size": [
+        100,
+        200
+    ],
+    "objects": [
+        {
+            "object_id": 0,
+            "label": 11,
+            "size": [
+                25,
+                25
+            ],
+            "initial_pos": [
+                12,
+                40
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                58,
+                37
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 1,
+            "label": 6,
+            "size": [
+                25,
+                25
+            ],
+            "initial_pos": [
+                37,
+                178
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                84,
+                46
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 2,
+            "label": 9,
+            "size": [
+                25,
+                25
+            ],
+            "initial_pos": [
+                87,
+                163
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                78,
+                173
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 3,
+            "label": 9,
+            "size": [
+                25,
+                25
+            ],
+            "initial_pos": [
+                44,
+                153
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                27,
+                177
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 4,
+            "label": 1,
+            "size": [
+                25,
+                25
+            ],
+            "initial_pos": [
+                12,
+                155
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                20,
+                39
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 5,
+            "label": 6,
+            "size": [
+                25,
+                25
+            ],
+            "initial_pos": [
+                12,
+                186
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                20,
+                144
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ]
+        }
+    ]
+}

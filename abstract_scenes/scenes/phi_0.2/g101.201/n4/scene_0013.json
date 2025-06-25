@@ -1,0 +1,123 @@
+{
+    "scene_id": 13,
+    "phi": 0.18935027831141324,
+    "num_objects": 4,
+    "grid_size": [
+        101,
+        201
+    ],
+    "objects": [
+        {
+            "object_id": 0,
+            "label": 3,
+            "size": [
+                31,
+                31
+            ],
+            "initial_pos": [
+                21,
+                79
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                65,
+                171
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 1,
+            "label": 1,
+            "size": [
+                31,
+                31
+            ],
+            "initial_pos": [
+                54,
+                67
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                58,
+                137
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 2,
+            "label": 3,
+            "size": [
+                31,
+                31
+            ],
+            "initial_pos": [
+                35,
+                21
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                27,
+                145
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 3,
+            "label": 3,
+            "size": [
+                31,
+                31
+            ],
+            "initial_pos": [
+                54,
+                141
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                24,
+                179
+            ],
+            "target_relation": [
+                0,
+                0,
+                0,
+                0
+            ]
+        }
+    ]
+}

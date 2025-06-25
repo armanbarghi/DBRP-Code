@@ -1,0 +1,89 @@
+{
+    "scene_id": 7,
+    "phi": 0.2143907460052936,
+    "num_objects": 3,
+    "grid_size": [
+        101,
+        101
+    ],
+    "objects": [
+        {
+            "object_id": 0,
+            "label": 5,
+            "size": [
+                27,
+                27
+            ],
+            "initial_pos": [
+                61,
+                71
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                42,
+                82
+            ],
+            "target_relation": [
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 1,
+            "label": 7,
+            "size": [
+                27,
+                27
+            ],
+            "initial_pos": [
+                17,
+                35
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                87,
+                68
+            ],
+            "target_relation": [
+                0,
+                0,
+                0
+            ]
+        },
+        {
+            "object_id": 2,
+            "label": 0,
+            "size": [
+                27,
+                27
+            ],
+            "initial_pos": [
+                84,
+                35
+            ],
+            "initial_relation": [
+                0,
+                0,
+                0
+            ],
+            "target_pos": [
+                39,
+                38
+            ],
+            "target_relation": [
+                0,
+                0,
+                0
+            ]
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+scene_id,mode,n,grid_size,alg,plans,steps,elapsed_times,costs
+0,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[195372],[360.01225900650024],[None]
+1,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[197241],[360.01294136047363],[None]
+2,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[196511],[360.0132555961609],[None]
+3,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[195521],[360.0117754936218],[None]
+4,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[225273],[360.01060223579407],[None]
+5,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[239268],[360.0137982368469],[None]
+6,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[207093],[360.0012149810791],[None]
+7,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[193992],[360.0105834007263],[None]
+8,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[290499],[360.0110938549042],[None]
+9,stationary,4,"[100, 100]",StrapGA_sort_4b,[None],[198307],[360.0164792537689],[None]
