@@ -2,6 +2,7 @@ import torch
 import time
 import numpy as np
 from tqdm import tqdm
+from typing import Union, List, Tuple, Optional, Dict
 from core.planners.utils import BaseSearch, copy_state, reconstruct_path
 from core.planners.Labbe import Labbe_S
 from core.env.scene_manager import Indices, build_parent_of
@@ -16,7 +17,6 @@ class MctsNode:
 		self.action = action
 		self.children = {}
 		self.n = 0
-		# self.w = 0
 		self.w = np.inf
 		self.c = c
 		self.cost = cost
@@ -47,7 +47,7 @@ class Sorp(BaseSearch):
 	def __init__(self, env):
 		super().__init__(env, MctsNode)
 	
-	def get_remaining_objs(self, state: dict) -> list:
+	def get_remaining_objs(self, state: Dict[str, torch.Tensor]) -> List[int]:
 		"""
 		• Objects whose aren't stacked on their target objects.
 		• Base objects whose current center ≠ target center.
@@ -79,16 +79,15 @@ class Sorp(BaseSearch):
 		perm = torch.randperm(rem.size(0))
 		return rem[perm].tolist()
 
-	def get_valid_actions(self, state: dict) -> list:
+	def get_valid_actions(self, state: Dict[str, torch.Tensor]) -> List[int]:
 		"""
 		...
 		"""
 		# restore the env to this state
 		self.env.set_state(copy_state(state))
 
-		rem = self.get_remaining_objs(state)          # Python list of ints
-		if len(rem) == 0:
-			return []
+		# which objects remain to be placed?
+		rem = self.get_remaining_objs(state)
 
 		# Which k are allowed (static_stack skips non‐empty actors)
 		if self.static_stack:
@@ -105,11 +104,11 @@ class Sorp(BaseSearch):
 
 		for k in ks:
 			valid_stacks = []
-			objs = self.env.get_empty_objs(ref_obj=k, n=stack_nums)
-			if len(objs) > 0:
-				M      = len(objs)
+			empty_objs = self.env.get_empty_objs(ref_obj=k, n=stack_nums)
+			if len(empty_objs) > 0:
+				M      = len(empty_objs)
 				starts = torch.full((M,), k, dtype=torch.long)
-				targets= torch.tensor(objs, dtype=torch.long)
+				targets= torch.tensor(empty_objs, dtype=torch.long)
 				valid_stacks = self.env.encode_stack(starts, targets).tolist()
 
 			valid_moves = []
