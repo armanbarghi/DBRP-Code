@@ -18,30 +18,12 @@
                 17,
                 40
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 13,
                 24
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 1,
@@ -54,30 +36,12 @@
                 78,
                 66
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 57,
                 33
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 2,
@@ -90,30 +54,12 @@
                 49,
                 55
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 24,
                 58
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 3,
@@ -126,30 +72,12 @@
                 81,
                 18
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 83,
                 57
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 4,
@@ -162,30 +90,12 @@
                 31,
                 12
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 52,
                 65
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 5,
@@ -198,30 +108,12 @@
                 12,
                 80
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 81,
                 83
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 6,
@@ -234,30 +126,12 @@
                 42,
                 85
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 83,
                 18
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 7,
@@ -270,30 +144,12 @@
                 56,
                 15
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 12,
                 83
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         }
     ]
 }

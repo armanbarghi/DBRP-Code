@@ -18,22 +18,12 @@
                 31,
                 35
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 67,
                 71
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 1,
@@ -46,22 +36,12 @@
                 64,
                 117
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 23,
                 177
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 2,
@@ -74,22 +54,12 @@
                 62,
                 169
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 41,
                 130
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         },
         {
             "object_id": 3,
@@ -102,22 +72,12 @@
                 27,
                 139
             ],
-            "initial_relation": [
-                0,
-                0,
-                0,
-                0
-            ],
             "target_pos": [
                 31,
                 34
             ],
-            "target_relation": [
-                0,
-                0,
-                0,
-                0
-            ]
+            "initial_base_id": null,
+            "target_base_id": null
         }
     ]
 }

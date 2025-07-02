@@ -660,8 +660,8 @@ class SceneManager:
 	and calculates costs associated with actions.
 	"""
 	def __init__(
-			self, mode: str, 
-			num_objects: int, grid_size: Tuple[int, int], 
+			self, num_objects: int, grid_size: Tuple[int, int], 
+			mode: str='stationary', 
 			static_stack: bool=False, terminal_cost: bool=True, 
 			phi: Union[str, float]='mix', verbose: int=1
 		):
