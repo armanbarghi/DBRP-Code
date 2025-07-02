@@ -60,10 +60,10 @@ __pycache__/
 venv/
 
 # Blender file
-sim/objects/*/*/*.blend
-sim/objects/*/*/*.obj
-sim/objects/*/*/*.mtl
-sim/objects/*/*/*.png
-sim/objects/*/*/*.urdf
-sim/objects/*/*/*.txt
-sim/objects/*/*/assets/
+core/sim/objects/*/*/*.blend
+core/sim/objects/*/*/*.obj
+core/sim/objects/*/*/*.mtl
+core/sim/objects/*/*/*.png
+core/sim/objects/*/*/*.urdf
+core/sim/objects/*/*/*.txt
+core/sim/objects/*/*/assets/

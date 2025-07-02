@@ -129,12 +129,12 @@ def create_obj(obj_name, mass, concave=False):
 
         create_urdf(folder_path, subdir, mass, concave)
 
-def load_object(name, pos, orn=[0, 0, 0], scale=1, bodyType=None, verbose=0):
+def load_object(name, pos, orn=[0, 0, 0], scale=1, bodyType=None, verbose=0, useFixedBase=False):
     if bodyType is None:
         bodyType = random.randint(1, len(os.listdir(f"sim/objects/{name}")))
     urdf_path = f"sim/objects/{name}/{name}_{bodyType}/{name}_{bodyType}.urdf"
     orn = p.getQuaternionFromEuler(orn)
-    bodyId = p.loadURDF(urdf_path, pos, orn, useFixedBase=False,
+    bodyId = p.loadURDF(urdf_path, pos, orn, useFixedBase=useFixedBase,
                         globalScaling=scale, flags=p.URDF_USE_MATERIAL_COLORS_FROM_MTL)
     p.changeVisualShape(bodyId, -1, rgbaColor=[1, 1, 1, 1])
     if verbose:
@@ -681,3 +681,37 @@ class Robot():
 					self.move_base_to_corner(pre_s, '2', mapped_target[2], duration)
 					self.move_base_to_corner('2', new_s, mapped_target[2], duration)
 			self.move_base_smooth(mapped_target, duration)
+
+def random_tilt(pos, orn, max_shift=0.05, shift_end=False, tilt_angle=10):
+	"""
+	Randomly shifts x and y coordinates and tilts the orientation 
+	opposite to the shift direction.
+	"""
+	x0, y0, z0 = pos
+	roll0, pitch0, yaw0 = orn
+
+	if shift_end:
+		# Pick a random angle and place shift on the circle
+		theta = np.random.uniform(0, 2 * np.pi)
+		dx = max_shift * np.cos(theta)
+		dy = max_shift * np.sin(theta)
+	else:
+		# Uniform random in the square [-max_shift, +max_shift]
+		dx = np.random.uniform(-max_shift, max_shift)
+		dy = np.random.uniform(-max_shift, max_shift)
+
+	new_pos = np.array([x0 + dx, y0 + dy, z0])
+
+	# Compute opposite tilt direction
+	opposite_dir = np.array([-dx, -dy, 0])
+	if np.linalg.norm(opposite_dir) > 1e-6:
+		opposite_dir = opposite_dir / np.linalg.norm(opposite_dir)  # normalize
+
+	# Apply tilt proportional to displacement
+	tilt_roll = -opposite_dir[1] * np.deg2rad(tilt_angle)  # around x-axis
+	tilt_pitch = opposite_dir[0] * np.deg2rad(tilt_angle)  # around y-axis
+
+	# New orientation by adding tilt to initial
+	new_orn = np.array([roll0 + tilt_roll, pitch0 + tilt_pitch, yaw0])
+
+	return new_pos, new_orn
