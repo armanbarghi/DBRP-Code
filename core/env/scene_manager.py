@@ -13,13 +13,13 @@ OBJECTS = {
 	1: {"name": "spoon", "color": "yellow", "category": "cat1", "size": (19, 19)},
 	2: {"name": "knife", "color": "yellow", "category": "cat1", "size": (19, 19)},
 	3: {"name": "apple", "color": "orange", "category": "cat2", "size": (9, 9)},
-	4: {"name": "pear", "color": "orange", "category": "cat2", "size": (9, 9)},
+	4: {"name": "pear", "color": "orange", "category": "cat2", "size": (7, 7)},
 	5: {"name": "banana", "color": "orange", "category": "cat2", "size": (17, 17)},
 	6: {"name": "paper-cup", "color": "green", "category": "cat3", "size": (9, 9)},
 	7: {"name": "mug", "color": "green", "category": "cat3", "size": (13, 13)},
 	8: {"name": "bowl", "color": "green", "category": "cat3", "size": (13, 13)},
-	9: {"name": "basket", "color": "blue", "category": "cat4", "size": (21, 21)},
-	10: {"name": "box", "color": "blue", "category": "cat4", "size": (21, 21)},
+	9: {"name": "basket", "color": "blue", "category": "cat4", "size": (25, 25)},
+	10: {"name": "box", "color": "blue", "category": "cat4", "size": (23, 23)},
 	11: {"name": "pan", "color": "blue", "category": "cat4", "size": (27, 27)}
 }
 
