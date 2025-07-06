@@ -50,6 +50,7 @@ class RobotController:
 		self._gripper_joint_id = 6
 		self._left_finger_joint_id = 9
 		self._right_finger_joint_id = 10
+		self._end_effector_link_id = 11
 		
 		self.workspace_x_limits = [initial_base_pos[0], -initial_base_pos[0]]
 		self.workspace_y_limits = [initial_base_pos[0], -initial_base_pos[0]]
@@ -105,7 +106,7 @@ class RobotController:
 
 	def get_ee_pos(self):
 		"""Get end-effector position and orientation."""
-		ee_pos, ee_orn = p.getLinkState(self.robot_id, 11)[:2]
+		ee_pos, ee_orn = p.getLinkState(self.robot_id, self._end_effector_link_id)[:2]
 		return ee_pos, ee_orn
 
 	def open_gripper(self, max_limit=True):
@@ -188,7 +189,7 @@ class RobotController:
 
 		q = p.calculateInverseKinematics(
 			self.robot_id, 
-			11, 
+			self._end_effector_link_id, 
 			target_pose.t, 
 			p.getQuaternionFromEuler(orientation),
 			lowerLimits=[self.joints[i].limits['lower'] for i in range(7)],
@@ -279,7 +280,7 @@ class RobotController:
 		for q in self.generate_linear_path(current_pose, target_pose, num_waypoints=20, orientation=target_orientation):
 			# self.reset(q)
 			self.set_joint_positions(q)
-			self.simulate_step(0.2)
+			self.simulate_step(0.25)
 
 	def set_joint_positions(self, joint_angles):
 		"""Set all joint positions simultaneously."""
@@ -424,20 +425,24 @@ class RobotController:
 		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + grasp_height])
 
 		# Create the fixed constraint with relative pose
-		ee_pos, ee_orn = self.get_ee_pos()
+		ee_pos, ee_orn = p.getLinkState(self.robot_id, self._end_effector_link_id)[:2]
+		obj_pos, obj_orn = p.getBasePositionAndOrientation(obj_id)
+
+		# Compute object pose in end-effector frame: T_obj_ee = inv(T_ee_w) * T_obj_w
 		inv_ee_pos, inv_ee_orn = p.invertTransform(ee_pos, ee_orn)
-		_, rel_orn = p.multiplyTransforms(inv_ee_pos, inv_ee_orn, obj_pos, obj_orn)
-		
+		rel_pos, rel_orn  = p.multiplyTransforms(inv_ee_pos, inv_ee_orn, obj_pos, obj_orn)
+
 		constraint_id = p.createConstraint(
-			parentBodyUniqueId=self.robot_id,
-			parentLinkIndex=11,
-			childBodyUniqueId=obj_id,
-			childLinkIndex=-1,
-			jointType=p.JOINT_FIXED,
-			jointAxis=[0, 0, 0],
-			parentFramePosition=[0, 0, 0],
-			childFramePosition=[0, 0, 0.1],
-			childFrameOrientation=rel_orn
+			parentBodyUniqueId    = self.robot_id,
+			parentLinkIndex       = self._end_effector_link_id,
+			childBodyUniqueId     = obj_id,
+			childLinkIndex        = -1,
+			jointType             = p.JOINT_FIXED,
+			jointAxis             = [0, 0, 0],
+			parentFramePosition   = rel_pos,
+			parentFrameOrientation= rel_orn,
+			childFramePosition    = [0, 0, 0],
+			childFrameOrientation = [0, 0, 0, 1]      # No extra rotation in object’s own frame
 		)
 		
 		# Store internal state
@@ -479,5 +484,5 @@ class RobotController:
 
 		# Reset gripper to neutral position
 		self.rotate_gripper_yaw(0)
-
+		
 		return True
