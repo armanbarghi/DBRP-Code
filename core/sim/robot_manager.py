@@ -28,7 +28,7 @@ class Joint(object):
 			controlMode=p.POSITION_CONTROL,
 			targetPosition=position,
 			force=max_force,
-			positionGain=0.5,
+			positionGain=0.3,
 			velocityGain=1.0
 		)
 
@@ -60,6 +60,7 @@ class RobotController:
 		self._grasped_object_id = None
 		self._grasp_constraint_id = None
 		
+		self.initial_poses = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
 		self.load_model()
 
 	def load_model(self):
@@ -89,10 +90,10 @@ class RobotController:
 		for _ in range(int(duration / self._time_step)):
 			p.stepSimulation()
 
-	def reset_joints(self, initial_positions=[0, -0.785, 0, -2.356, 0, 1.571, 0.785, 0, 0]):
+	def reset_joints(self):
 		"""Reset all joints to initial positions."""
-		for joint_id in range(len(initial_positions)):
-			p.resetJointState(self.robot_id, joint_id, initial_positions[joint_id])
+		for joint_id in range(len(self.initial_poses)):
+			p.resetJointState(self.robot_id, joint_id, self.initial_poses[joint_id])
 
 		self.init_ee_pos = self.get_ee_pos()
 
@@ -109,25 +110,53 @@ class RobotController:
 		ee_pos, ee_orn = p.getLinkState(self.robot_id, self._end_effector_link_id)[:2]
 		return ee_pos, ee_orn
 
-	def open_gripper(self, max_limit=True):
-		"""Open gripper to specified limit."""
-		if max_limit:
-			self._left_finger.set_position(self._left_finger.limits['upper'])
-			self._right_finger.set_position(self._right_finger.limits['upper'])
-		else:
-			self._left_finger.set_position(self._left_finger.limits['upper']/2)
-			self._right_finger.set_position(self._right_finger.limits['upper']/2)
+	def open_gripper(self, max_limit=True, duration=0.5, steps=20):
+		"""Open gripper smoothly to specified limit."""
+		# Get current finger positions
+		current_left = self._left_finger.get_position()
+		current_right = self._right_finger.get_position()
 		
-		self.simulate_step(0.2)
+		# Determine target positions
+		if max_limit:
+			target_left = self._left_finger.limits['upper']
+			target_right = self._right_finger.limits['upper']
+		else:
+			target_left = self._left_finger.limits['upper'] / 2
+			target_right = self._right_finger.limits['upper'] / 2
+		
+		# Create smooth trajectory
+		left_trajectory = np.linspace(current_left, target_left, steps)
+		right_trajectory = np.linspace(current_right, target_right, steps)
+		
+		# Execute smooth movement
+		step_duration = duration / steps
+		for i in range(steps):
+			self._left_finger.set_position(left_trajectory[i])
+			self._right_finger.set_position(right_trajectory[i])
+			self.simulate_step(step_duration)
 
-	def close_gripper(self):
-		"""Close gripper completely."""
-		self._left_finger.set_position(self._left_finger.limits['lower'])
-		self._right_finger.set_position(self._right_finger.limits['lower'])
+	def close_gripper(self, duration=0.5, steps=20):
+		"""Close gripper smoothly."""
+		# Get current finger positions
+		current_left = self._left_finger.get_position()
+		current_right = self._right_finger.get_position()
+		
+		# Target positions (fully closed)
+		target_left = self._left_finger.limits['lower']
+		target_right = self._right_finger.limits['lower']
+		
+		# Create smooth trajectory
+		left_trajectory = np.linspace(current_left, target_left, steps)
+		right_trajectory = np.linspace(current_right, target_right, steps)
+		
+		# Execute smooth movement
+		step_duration = duration / steps
+		for i in range(steps):
+			self._left_finger.set_position(left_trajectory[i])
+			self._right_finger.set_position(right_trajectory[i])
+			self.simulate_step(step_duration)
 
-		self.simulate_step(0.2)
-
-	def rotate_gripper_yaw(self, yaw_angle):
+	def rotate_gripper_yaw(self, yaw_angle, duration=0.5):
 		"""Rotate gripper to target yaw angle smoothly."""
 		# 1) get full EE rotation matrix
 		q = self.get_ee_pos()[1]
@@ -151,20 +180,21 @@ class RobotController:
 		# 6) map that into joint‐space delta, accounting for the flip
 		djoint = sign * dglob
 
-		# 7) interpolate exactly as before
-		N = max(int(abs(djoint) / 0.02), 1)
+		# Calculate steps based on duration instead of hardcoded 0.05
+		step_duration = 0.05  # Keep this for smooth motion
+		N = max(int(duration / step_duration), 1)
+
 		for i in range(1, N+1):
-			rel = rel0 + djoint * (i/N)                # new relative yaw
-			q_cmd = rel + self.wrist_neutral          # back to joint angle
+			rel = rel0 + djoint * (i/N)
+			q_cmd = rel + self.wrist_neutral
 			q_cmd = np.clip(q_cmd,
 							self.joints[self._gripper_joint_id].limits['lower'],
 							self.joints[self._gripper_joint_id].limits['upper'])
 			self.joints[self._gripper_joint_id].set_position(q_cmd)
-			self.simulate_step(0.05)
+			self.simulate_step(step_duration)
 
-	def inverse_kinematics(self, target_pose: sm.SE3, orientation: list, initial_guess: Union[ArrayLike, None]=None, max_iterations: int=100) -> np.ndarray:
+	def inverse_kinematics(self, target_pose: sm.SE3, orientation: list, max_iterations: int=100) -> np.ndarray:
 		"""Calculate joint angles for target pose using inverse kinematics."""
-		# if initial_guess is None:
 		# 	initial_guess = np.zeros(7)
 		
 		# lower_limit_joints = [self.joints[i].limits['lower'] for i in range(7)]
@@ -187,14 +217,22 @@ class RobotController:
 		# 	print('IK solution out of joint limits.')
 		# 	q = np.clip(q, lower_limit_joints, upper_limit_joints)
 
+		joint_indices = list(range(7))
+		lower_limits = [self.joints[i].limits['lower'] for i in joint_indices]
+		upper_limits = [self.joints[i].limits['upper'] for i in joint_indices]
+		joint_ranges = [upper - lower for upper, lower in zip(upper_limits, lower_limits)]
+
 		q = p.calculateInverseKinematics(
-			self.robot_id, 
-			self._end_effector_link_id, 
-			target_pose.t, 
-			p.getQuaternionFromEuler(orientation),
-			lowerLimits=[self.joints[i].limits['lower'] for i in range(7)],
-			upperLimits=[self.joints[i].limits['upper'] for i in range(7)],
-			maxNumIterations=max_iterations,
+			self.robot_id,
+			self._end_effector_link_id,
+			targetPosition=target_pose.t,
+			targetOrientation=p.getQuaternionFromEuler(orientation),
+			jointDamping=[0.1]*len(joint_indices),
+			lowerLimits=lower_limits,
+			upperLimits=upper_limits,
+			restPoses=self.initial_poses,
+			jointRanges=joint_ranges,
+			maxNumIterations= max_iterations,
 		)
 		return q[:7]
 
@@ -222,26 +260,27 @@ class RobotController:
 			'3': y - self.workspace_y_limits[0],		# Left side
 		}
 		
-		thresh = 0.1
-
 		# Find the side with the minimum distance
 		closest_side = min(distances, key=distances.get)
 		if closest_side == '0':
-			target_position = [self.workspace_x_limits[0]-thresh, y, z]
+			target_position = [self.workspace_x_limits[0], y, z]
 		elif closest_side == '1':
-			target_position = [x, self.workspace_y_limits[1]+thresh, z]
+			target_position = [x, self.workspace_y_limits[1], z]
 		elif closest_side == '2':
-			target_position = [self.workspace_x_limits[1]+thresh, y, z]
+			target_position = [self.workspace_x_limits[1], y, z]
 		else:
-			target_position = [x, self.workspace_y_limits[0]-thresh, z]
+			target_position = [x, self.workspace_y_limits[0], z]
 		
 		return closest_side, target_position
 
-	def move_to_position(self, target_position):
+	def move_to_position(self, target_position, duration=5.0):
 		"""Move end-effector to target position with appropriate orientation."""
 		if self.mode == "mobile":
-			pre_base_pos, _ = p.getBasePositionAndOrientation(self.robot_id)
-			self.move_base_along_table(target_position, duration=10)
+			# Split duration: 70% for base movement, 30% for arm movement
+			base_duration = duration * 0.7
+			arm_duration = duration * 0.3
+		
+			self.move_base_along_table(target_position, duration=base_duration)
 			base_pos, _ = p.getBasePositionAndOrientation(self.robot_id)
 
 			state = self.find_closest_table_side(base_pos)[0]
@@ -253,16 +292,21 @@ class RobotController:
 				target_orientation=[np.pi, 0, np.pi]
 			else:
 				target_orientation=[np.pi, 0, np.pi/2]
+
+			# Move end-effector with remaining duration
+			self.move_end_effector(target_position, target_orientation, duration=arm_duration)
+			
 		else:
 			# grab current EE quaternion and extract yaw
 			ee_quat = self.get_ee_pos()[1]
 			_, _, current_yaw = p.getEulerFromQuaternion(ee_quat)
 			# do a straight-line move keeping that same yaw
 			target_orientation = [np.pi, 0, current_yaw]
+			
+			# Use full duration for arm movement in stationary mode
+			self.move_end_effector(target_position, target_orientation, duration=duration)
 
-		self.move_end_effector(target_position, target_orientation)
-
-	def move_end_effector(self, target_position, target_orientation):
+	def move_end_effector(self, target_position, target_orientation, duration=2.0):
 		"""Move end-effector through linear path to target pose."""
 		# get current EE pose as SM.SE3
 		position, orientation = self.get_ee_pos()
@@ -272,26 +316,21 @@ class RobotController:
 		# build the desired end‑pose
 		target_pose = sm.SE3(target_position) * sm.SE3.RPY(target_orientation, order='xyz', unit='rad')
 
-		# q = self.inverse_kinematics(target_pose)
-		# self.reset(q)
-		# self.set_joint_positions(q)
+		# Calculate timing for waypoints
+		num_waypoints = 20
+		waypoint_duration = duration / num_waypoints
 
 		# sweep through the straight‑line path
-		for q in self.generate_linear_path(current_pose, target_pose, num_waypoints=20, orientation=target_orientation):
-			# self.reset(q)
+		for q in self.generate_linear_path(current_pose, target_pose, num_waypoints=num_waypoints, orientation=target_orientation):
 			self.set_joint_positions(q)
-			self.simulate_step(0.25)
+			self.simulate_step(waypoint_duration)
 
 	def set_joint_positions(self, joint_angles):
 		"""Set all joint positions simultaneously."""
 		for i in range(7):
 			self.joints[i].set_position(joint_angles[i])
 
-	def move_base(self, new_base_pos, new_base_orn):
-		"""Instantly move robot base to new position and orientation."""
-		p.resetBasePositionAndOrientation(self.robot_id, new_base_pos, new_base_orn)
-
-	def move_base_smoothly(self, target_base_pos, duration=1.0, steps=100):
+	def move_base(self, target_base_pos, duration=1.0, steps=100):
 		"""Smoothly move robot base to target position over duration."""
 		# Get the current base position and orientation
 		current_pos, current_orn = p.getBasePositionAndOrientation(self.robot_id)
@@ -300,14 +339,14 @@ class RobotController:
 		# Create a linear interpolation for the position
 		pos_traj = np.linspace(current_pos, target_base_pos, steps)
 		
-		# Move along the trajectory
+		# Move along the trajectory with consistent timing
+		step_duration = duration / steps
 		for i in range(steps):
-			t = i / (steps - 1)
 			# Update the base position and orientation
 			p.resetBasePositionAndOrientation(self.robot_id, pos_traj[i], current_orn)
-			self.simulate_step(duration / steps)
+			self.simulate_step(step_duration)  # Use step_duration instead of fixed 0.1
 
-	def rotate_base_smooth(self, target_base_orn, duration=1.0, steps=100):
+	def rotate_base(self, target_base_orn, duration=1.0, steps=100):
 		"""Smoothly rotate robot base to target orientation over duration."""
 		# Get the current base position and orientation
 		current_pos, current_orn = p.getBasePositionAndOrientation(self.robot_id)
@@ -319,11 +358,12 @@ class RobotController:
 			t = i / (steps - 1)
 			orn_traj[i] = p.getQuaternionSlerp(current_orn, target_base_orn, t)
 		
-		# Move along the trajectory
+		# Move along the trajectory with consistent timing
+		step_duration = duration / steps
 		for i in range(steps):
 			# Update the base position and orientation
 			p.resetBasePositionAndOrientation(self.robot_id, current_pos, orn_traj[i])
-			self.simulate_step(duration / steps)
+			self.simulate_step(step_duration)  # Use step_duration instead of fixed 0.1
 
 	def move_base_to_corner(self, previous_side, target_side, z_height, duration=1.0):
 		"""Move robot base to corner between two table sides."""
@@ -334,26 +374,28 @@ class RobotController:
 			'3': [0, 0, np.pi/2],      # Left side -> Facing right
 		}
 
-		thresh = 0.1
-
 		corners = {
-			('0', '1'): [self.workspace_x_limits[0]-thresh, self.workspace_y_limits[1]+thresh],
-			('1', '0'): [self.workspace_x_limits[0]-thresh, self.workspace_y_limits[1]+thresh],
-			('0', '3'): [self.workspace_x_limits[0]-thresh, self.workspace_y_limits[0]-thresh],
-			('3', '0'): [self.workspace_x_limits[0]-thresh, self.workspace_y_limits[0]-thresh],
-			('1', '2'): [self.workspace_x_limits[1]+thresh, self.workspace_y_limits[1]+thresh],
-			('2', '1'): [self.workspace_x_limits[1]+thresh, self.workspace_y_limits[1]+thresh],
-			('2', '3'): [self.workspace_x_limits[1]+thresh, self.workspace_y_limits[0]-thresh],
-			('3', '2'): [self.workspace_x_limits[1]+thresh, self.workspace_y_limits[0]-thresh],
+			('0', '1'): [self.workspace_x_limits[0], self.workspace_y_limits[1]],
+			('1', '0'): [self.workspace_x_limits[0], self.workspace_y_limits[1]],
+			('0', '3'): [self.workspace_x_limits[0], self.workspace_y_limits[0]],
+			('3', '0'): [self.workspace_x_limits[0], self.workspace_y_limits[0]],
+			('1', '2'): [self.workspace_x_limits[1], self.workspace_y_limits[1]],
+			('2', '1'): [self.workspace_x_limits[1], self.workspace_y_limits[1]],
+			('2', '3'): [self.workspace_x_limits[1], self.workspace_y_limits[0]],
+			('3', '2'): [self.workspace_x_limits[1], self.workspace_y_limits[0]],
 		}
 		
 		assert (previous_side, target_side) in corners
 
 		corner_pos = corners[(previous_side, target_side)] + [z_height]
-		self.move_base_smoothly(corner_pos, duration)
-		self.rotate_base_smooth(side_orientations[target_side], duration)
+		# Split duration between move and rotate for smoother motion
+		move_duration = duration * 0.6  # 60% for position
+		rotate_duration = duration * 0.4  # 40% for rotation
 
-	def move_base_along_table(self, target_position, duration=1.0):
+		self.move_base(corner_pos, move_duration)
+		self.rotate_base(side_orientations[target_side], rotate_duration)
+
+	def move_base_along_table(self, target_position, duration=2.0):
 		"""Move robot base along table perimeter to target position."""
 		current_pos, _ = p.getBasePositionAndOrientation(self.robot_id)
 
@@ -361,50 +403,57 @@ class RobotController:
 		target_side, mapped_target = self.find_closest_table_side(target_position)
 
 		if current_side == target_side:
-			self.move_base_smoothly(mapped_target, duration)
+			self.move_base(mapped_target, duration)
 		elif abs(int(current_side) - int(target_side)) == 1 or abs(int(current_side) - int(target_side)) == 3:
-			self.move_base_to_corner(current_side, target_side, mapped_target[2], duration)
-			self.move_base_smoothly(mapped_target, duration)
+			# Duration should be split between corner move and final move
+			corner_duration = duration * 0.6
+			final_duration = duration * 0.4
+			self.move_base_to_corner(current_side, target_side, mapped_target[2], corner_duration)
+			self.move_base(mapped_target, final_duration)
 		else:
+			# For opposite sides - need to split duration between TWO corner moves + final move
+			corner1_duration = duration * 0.3
+			corner2_duration = duration * 0.3
+			final_duration = duration * 0.4
 			if current_side == '0':
 				if self.workspace_y_limits[1] - target_position[1] + self.workspace_y_limits[1] - current_pos[1] < target_position[1] - self.workspace_y_limits[0] + current_pos[1] - self.workspace_y_limits[0]:
 					# clockwise
-					self.move_base_to_corner(current_side, '1', mapped_target[2], duration)
-					self.move_base_to_corner('1', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '1', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('1', target_side, mapped_target[2], corner2_duration)
 				else:
 					# counter-clockwise
-					self.move_base_to_corner(current_side, '3', mapped_target[2], duration)
-					self.move_base_to_corner('3', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '3', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('3', target_side, mapped_target[2], corner2_duration)
 			elif current_side == '1':
 				if self.workspace_x_limits[1] - target_position[0] + self.workspace_x_limits[1] - current_pos[0] < target_position[0] - self.workspace_x_limits[0] + current_pos[0] - self.workspace_x_limits[0]:
 					# clockwise
-					self.move_base_to_corner(current_side, '2', mapped_target[2], duration)
-					self.move_base_to_corner('2', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '2', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('2', target_side, mapped_target[2], corner2_duration)
 				else:
 					# counter-clockwise
-					self.move_base_to_corner(current_side, '0', mapped_target[2], duration)
-					self.move_base_to_corner('0', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '0', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('0', target_side, mapped_target[2], corner2_duration)
 			elif current_side == '2':
 				if self.workspace_y_limits[1] - target_position[1] + self.workspace_y_limits[1] - current_pos[1] > target_position[1] - self.workspace_y_limits[0] + current_pos[1] - self.workspace_y_limits[0]:
 					# clockwise
-					self.move_base_to_corner(current_side, '3', mapped_target[2], duration)
-					self.move_base_to_corner('3', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '3', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('3', target_side, mapped_target[2], corner2_duration)
 				else:
 					# counter-clockwise
-					self.move_base_to_corner(current_side, '1', mapped_target[2], duration)
-					self.move_base_to_corner('1', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '1', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('1', target_side, mapped_target[2], corner2_duration)
 			else:
 				if self.workspace_x_limits[1] - target_position[0] + self.workspace_x_limits[1] - current_pos[0] > target_position[0] - self.workspace_x_limits[0] + current_pos[0] - self.workspace_x_limits[0]:
 					# clockwise
-					self.move_base_to_corner(current_side, '0', mapped_target[2], duration)
-					self.move_base_to_corner('0', target_side, mapped_target[2], duration)
+					self.move_base_to_corner(current_side, '0', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('0', target_side, mapped_target[2], corner2_duration)
 				else:
 					# counter-clockwise
-					self.move_base_to_corner(current_side, '2', mapped_target[2], duration)
-					self.move_base_to_corner('2', target_side, mapped_target[2], duration)
-			self.move_base_smoothly(mapped_target, duration)
+					self.move_base_to_corner(current_side, '2', mapped_target[2], corner1_duration)
+					self.move_base_to_corner('2', target_side, mapped_target[2], corner2_duration)
+			self.move_base(mapped_target, final_duration)
 
-	def pick_object(self, obj_id, target_yaw=None, approach_height=0.3, grasp_height=0.1):
+	def pick_object(self, obj_id, target_yaw=None, approach_height=0.3, grasp_height=0.1, duration=3.0):
 		"""Pick up object by grasping and creating constraint."""
 		# Check if already holding an object
 		if self._grasped_object_id is not None:
@@ -415,14 +464,14 @@ class RobotController:
 		obj_pos, obj_orn = p.getBasePositionAndOrientation(obj_id)
 		
 		# Approach object from above
-		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + approach_height])
+		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + approach_height], duration=duration*0.5)
 
 		# Rotate gripper to target yaw if specified
 		if target_yaw is not None:
 			self.rotate_gripper_yaw(target_yaw)
 
 		# Move down to grasp height
-		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + grasp_height])
+		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + grasp_height], duration=duration*0.25)
 
 		# Create the fixed constraint with relative pose
 		ee_pos, ee_orn = p.getLinkState(self.robot_id, self._end_effector_link_id)[:2]
@@ -450,11 +499,11 @@ class RobotController:
 		self._grasp_constraint_id = constraint_id
 		
 		self.close_gripper()
-		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + approach_height])
+		self.move_to_position([obj_pos[0], obj_pos[1], obj_pos[2] + approach_height], duration=duration*0.25)
 		
 		return True
 
-	def place_object(self, target_position, target_yaw=None, approach_height=0.3, place_height=0.1):
+	def place_object(self, target_position, target_yaw=None, approach_height=0.3, place_height=0.1, duration=3.0):
 		"""Place held object at target position."""
 		# Check if holding an object
 		if self._grasped_object_id is None:
@@ -462,14 +511,14 @@ class RobotController:
 			return False
 		
 		# Approach target position from above
-		self.move_to_position([target_position[0], target_position[1], target_position[2] + approach_height])
+		self.move_to_position([target_position[0], target_position[1], target_position[2] + approach_height], duration=duration*0.5)
 
 		# Rotate gripper to target yaw if specified
 		if target_yaw is not None:
 			self.rotate_gripper_yaw(target_yaw)
 		
 		# Move to place height with target yaw orientation for the EE
-		self.move_to_position([target_position[0], target_position[1], target_position[2] + place_height])
+		self.move_to_position([target_position[0], target_position[1], target_position[2] + place_height], duration=duration*0.25)
 		
 		self.open_gripper()
 		
@@ -480,7 +529,7 @@ class RobotController:
 		self._grasped_object_id = None
 		self._grasp_constraint_id = None
 		
-		self.move_to_position([target_position[0], target_position[1], target_position[2] + approach_height])
+		self.move_to_position([target_position[0], target_position[1], target_position[2] + approach_height], duration=duration*0.25)
 
 		# Reset gripper to neutral position
 		self.rotate_gripper_yaw(0)
