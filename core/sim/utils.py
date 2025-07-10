@@ -5,150 +5,148 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import trimesh
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 def decompose_obj(directory, obj_name):
-    input_path = os.path.join(directory, f"{obj_name}.obj")
-    output_path = os.path.join(directory, f"{obj_name}_vhacd.obj")
-    log_path = os.path.join(directory, "vhacd_log.txt")
+	input_path = os.path.join(directory, f"{obj_name}.obj")
+	output_path = os.path.join(directory, f"{obj_name}_vhacd.obj")
+	log_path = os.path.join(directory, "vhacd_log.txt")
 
-    p.vhacd(
-        input_path,
-        output_path,
-        log_path,
-        resolution=100000,
-        depth=20,
-        concavity=0.0025,
-        planeDownsampling=4,
-        convexhullDownsampling=4,
-        alpha=0.04,
-        beta=0.05,
-        gamma=0.00125,
-        minVolumePerCH=0.0001
-    )
+	p.vhacd(
+		input_path,
+		output_path,
+		log_path,
+		resolution=100000,
+		depth=20,
+		concavity=0.0025,
+		planeDownsampling=4,
+		convexhullDownsampling=4,
+		alpha=0.04,
+		beta=0.05,
+		gamma=0.00125,
+		minVolumePerCH=0.0001
+	)
 
-    print(f"[VHACD] Decomposition complete: {output_path}")
+	print(f"[VHACD] Decomposition complete: {output_path}")
 
 def create_urdf(directory, name, mass, use_concave_collision=False):
-    obj_path = os.path.join(directory, f"{name}.obj")
-    scene = trimesh.load(obj_path, force='scene')
-    parts = []
+	obj_path = os.path.join(directory, f"{name}.obj")
+	scene = trimesh.load(obj_path, force='scene')
+	parts = []
 
-    if len(scene.geometry) == 1:
-        parts.append(("link_1", f"{name}.obj"))
-    else:
-        for idx, (geom_name, geom) in enumerate(scene.geometry.items(), start=1):
-            part_filename = f"{name}_{idx}.obj"
-            part_path = os.path.join(directory, part_filename)
+	if len(scene.geometry) == 1:
+		parts.append(("link_1", f"{name}.obj"))
+	else:
+		for idx, (geom_name, geom) in enumerate(scene.geometry.items(), start=1):
+			part_filename = f"{name}_{idx}.obj"
+			part_path = os.path.join(directory, part_filename)
 
-            if hasattr(geom.visual, 'material') and geom.visual.material is not None:
-                geom.visual.material.name = geom_name
-            else:
-                geom.visual.material = trimesh.visual.material.SimpleMaterial(name=geom_name)
+			if hasattr(geom.visual, 'material') and geom.visual.material is not None:
+				geom.visual.material.name = geom_name
+			else:
+				geom.visual.material = trimesh.visual.material.SimpleMaterial(name=geom_name)
 
-            obj_text = trimesh.exchange.obj.export_obj(geom, mtl_name='material.mtl')
+			obj_text = trimesh.exchange.obj.export_obj(geom, mtl_name='material.mtl')
 
-            lines = obj_text.splitlines()
-            for i, line in enumerate(lines):
-                if line.startswith('mtllib'):
-                    lines.insert(i + 1, f'o {name}_{idx}')
-                    break
-            obj_text_with_o = '\n'.join(lines)
+			lines = obj_text.splitlines()
+			for i, line in enumerate(lines):
+				if line.startswith('mtllib'):
+					lines.insert(i + 1, f'o {name}_{idx}')
+					break
+			obj_text_with_o = '\n'.join(lines)
 
-            with open(part_path, 'w') as f:
-                f.write(obj_text_with_o)
+			with open(part_path, 'w') as f:
+				f.write(obj_text_with_o)
 
-            parts.append((f"link_{idx}", part_filename))
+			parts.append((f"link_{idx}", part_filename))
 
-    collision_file = f"{name}_vhacd.obj" if use_concave_collision else f"{name}.obj"
-    if use_concave_collision:
-        decompose_obj(directory, name)
+	collision_file = f"{name}_vhacd.obj" if use_concave_collision else f"{name}.obj"
+	if use_concave_collision:
+		decompose_obj(directory, name)
 
-    links_xml = []
-    joints_xml = []
-    for i, (link_name, mesh_file) in enumerate(parts):
-        links_xml.append(f'''
-  <link name="{link_name}">
-    <inertial>
-      <mass value="{mass / len(parts):.4f}"/>
-      <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
-    </inertial>
-    <visual>
-      <geometry><mesh filename="{mesh_file}"/></geometry>
-    </visual>
-    <collision>
-      <geometry><mesh filename="{collision_file}"/></geometry>
-    </collision>
-  </link>''')
+	links_xml = []
+	joints_xml = []
+	for i, (link_name, mesh_file) in enumerate(parts):
+		links_xml.append(f'''
+<link name="{link_name}">
+	<inertial>
+	<mass value="{mass / len(parts):.4f}"/>
+	<inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>
+	</inertial>
+	<visual>
+	<geometry><mesh filename="{mesh_file}"/></geometry>
+	</visual>
+	<collision>
+	<geometry><mesh filename="{collision_file}"/></geometry>
+	</collision>
+</link>''')
 
-        if i > 0:
-            joints_xml.append(f'''
-  <joint name="fixed_{parts[i - 1][0]}_{link_name}" type="fixed">
-    <parent link="{parts[i - 1][0]}"/>
-    <child link="{link_name}"/>
-  </joint>''')
+		if i > 0:
+			joints_xml.append(f'''
+<joint name="fixed_{parts[i - 1][0]}_{link_name}" type="fixed">
+	<parent link="{parts[i - 1][0]}"/>
+	<child link="{link_name}"/>
+</joint>''')
 
-    urdf_content = f'''<?xml version="1.0"?>
+	urdf_content = f'''<?xml version="1.0"?>
 <robot name="{name}">
 {''.join(links_xml)}
 {''.join(joints_xml)}
 </robot>'''
 
-    urdf_path = os.path.join(directory, f"{name}.urdf")
-    with open(urdf_path, 'w') as f:
-        f.write(urdf_content)
+	urdf_path = os.path.join(directory, f"{name}.urdf")
+	with open(urdf_path, 'w') as f:
+		f.write(urdf_content)
 
-    print(f"[URDF] Created with {len(parts)} link(s): {urdf_path}")
+	print(f"[URDF] Created with {len(parts)} link(s): {urdf_path}")
 
 def convert_glb_to_urdf(obj_name, mass, use_concave_collision=False):
-    base_path = os.path.join("core/sim/objects", obj_name)
+	base_path = os.path.join("core/sim/objects", obj_name)
 
-    for subdir in os.listdir(base_path):
-        folder_path = os.path.join(base_path, subdir)
+	for subdir in os.listdir(base_path):
+		folder_path = os.path.join(base_path, subdir)
 
-        for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)
-            if os.path.isfile(file_path) and not (filename.endswith('.glb') or filename.endswith('.blend')):
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    print(f"[Cleanup] Error deleting {file_path}: {e}")
+		for filename in os.listdir(folder_path):
+			file_path = os.path.join(folder_path, filename)
+			if os.path.isfile(file_path) and not (filename.endswith('.glb') or filename.endswith('.blend')):
+				try:
+					os.remove(file_path)
+				except Exception as e:
+					print(f"[Cleanup] Error deleting {file_path}: {e}")
 
-        glb_path = os.path.join(folder_path, f"{subdir}.glb")
-        obj_path = os.path.join(folder_path, f"{subdir}.obj")
+		glb_path = os.path.join(folder_path, f"{subdir}.glb")
+		obj_path = os.path.join(folder_path, f"{subdir}.obj")
 
-        scene = trimesh.load(glb_path, force='scene')
-        scene.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
-        scene.export(obj_path)
-        print(f"[Export] Converted to OBJ: {obj_path}")
+		scene = trimesh.load(glb_path, force='scene')
+		scene.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [1, 0, 0]))
+		scene.export(obj_path)
+		print(f"[Export] Converted to OBJ: {obj_path}")
 
-        create_urdf(folder_path, subdir, mass, use_concave_collision)
+		create_urdf(folder_path, subdir, mass, use_concave_collision)
 
 def load_object_urdf(name, pos, orn=[0, 0, 0], scale=1, body_type=None, verbose=0, use_fixed_base=False):
-    if body_type is None:
-        body_type = random.randint(1, len(os.listdir(f"core/sim/objects/{name}")))
-    urdf_path = f"core/sim/objects/{name}/{name}_{body_type}/{name}_{body_type}.urdf"
-    orn = p.getQuaternionFromEuler(orn)
-    body_id = p.loadURDF(urdf_path, pos, orn, useFixedBase=use_fixed_base,
-                        globalScaling=scale, flags=p.URDF_USE_MATERIAL_COLORS_FROM_MTL)
-    p.changeVisualShape(body_id, -1, rgbaColor=[1, 1, 1, 1])
-    if verbose:
-        print(f"Loaded object {name} at {pos}")
-    return body_id, body_type
+	if body_type is None:
+		body_type = random.randint(1, len(os.listdir(f"core/sim/objects/{name}")))
+	urdf_path = f"core/sim/objects/{name}/{name}_{body_type}/{name}_{body_type}.urdf"
+	orn = p.getQuaternionFromEuler(orn)
+	body_id = p.loadURDF(urdf_path, pos, orn, useFixedBase=use_fixed_base,
+						globalScaling=scale, flags=p.URDF_USE_MATERIAL_COLORS_FROM_MTL)
+	p.changeVisualShape(body_id, -1, rgbaColor=[1, 1, 1, 1])
+	if verbose:
+		print(f"Loaded object {name} at {pos}")
+	return body_id, body_type
 
 def load_table_urdf(grid_size, pos=[0, 0, 0], verbose=0):
-    if grid_size == (100, 100):
-        file_path = "core/sim/objects/table/table_1.1/table_1.1.urdf"
-    elif grid_size == (100, 300):
-        file_path = "core/sim/objects/table/table_1.3/table_1.3.urdf"
-    else:
-        raise ValueError("Invalid grid size. Supported sizes are (100, 100) and (100, 300).")
-    body_id = p.loadURDF(file_path, pos, useFixedBase=True)
-    p.changeVisualShape(body_id, -1, rgbaColor=[1, 1, 1, 1])
-    if verbose > 0:
-        print(f"Loaded table with grid size {grid_size}")
-    return body_id
+	if grid_size == (100, 100):
+		file_path = "core/sim/objects/table/table_1.1/table_1.1.urdf"
+	elif grid_size == (100, 300):
+		file_path = "core/sim/objects/table/table_1.3/table_1.3.urdf"
+	else:
+		raise ValueError("Invalid grid size. Supported sizes are (100, 100) and (100, 300).")
+	body_id = p.loadURDF(file_path, pos, useFixedBase=True)
+	p.changeVisualShape(body_id, -1, rgbaColor=[1, 1, 1, 1])
+	if verbose > 0:
+		print(f"Loaded table with grid size {grid_size}")
+	return body_id
 
 def get_bounding_box_size(obj_id):
 	# Get the bounding box of the object
@@ -226,91 +224,3 @@ class PyBulletSim:
 			p.disconnect()
 		except:
 			pass
-
-class Camera:
-	def __init__(self, target_pos, distance, yaw, pitch, roll, width=640, height=480,
-					near=0.01, far=100, fov=60):
-		self.target = target_pos
-		self.distance = distance
-		self.yaw, self.pitch, self.roll = yaw, pitch, roll
-		self.width, self.height = width, height
-		self.near, self.far = near, far
-		self.fov = fov
-		self.up_axis = 2
-
-		p.resetDebugVisualizerCamera(
-			cameraDistance=distance, 
-			cameraTargetPosition=target_pos, 
-			cameraYaw=yaw, cameraPitch=pitch
-		)
-
-		self.view_matrix = p.computeViewMatrixFromYawPitchRoll(
-			self.target, self.distance, self.yaw, self.pitch, self.roll, self.up_axis)
-		self.proj_matrix = p.computeProjectionMatrixFOV(
-			self.fov, self.width/self.height, self.near, self.far)
-
-		self.V = np.array(self.view_matrix).reshape(4, 4, order='F')
-		self.P = np.array(self.proj_matrix).reshape(4, 4, order='F')
-
-	def capture_image(self):
-		_, _, rgb, _, _ = p.getCameraImage(
-			self.width, self.height,
-			viewMatrix=self.view_matrix,
-			projectionMatrix=self.proj_matrix,
-			shadow=True,
-			renderer=p.ER_BULLET_HARDWARE_OPENGL)
-		rgba = np.reshape(rgb, (self.height, self.width, 4)).astype(np.uint8)
-		return rgba[:, :, :3]
-
-	def project_points(self, world_points):
-		N = world_points.shape[0]
-		clip_pts = self.P @ (self.V @ np.vstack([world_points.T, np.ones(N)]))
-		ndc = clip_pts / clip_pts[3]
-		u = (ndc[0]*0.5 + 0.5) * self.width
-		v = (1 - (ndc[1]*0.5 + 0.5)) * self.height
-		return u, v
-
-	def compute_bounding_box(self, body_name, body_id, body_type, num_samples=200):
-		mesh_path = f"core/sim/objects/{body_name}/{body_name}_{body_type}/{body_name}_{body_type}.obj"
-		mesh = trimesh.load_mesh(mesh_path)
-		points, _ = trimesh.sample.sample_surface(mesh, num_samples)
-		pos, orn = p.getBasePositionAndOrientation(body_id)
-		R = trimesh.transformations.quaternion_matrix([orn[3], *orn[:3]])[:3, :3]
-		world_pts = (R @ points.T).T + np.array(pos)
-		u, v = self.project_points(world_pts)
-		u_min, u_max = np.floor(u.min()).astype(int), np.ceil(u.max()).astype(int)
-		v_min, v_max = np.floor(v.min()).astype(int), np.ceil(v.max()).astype(int)
-		return (u_min, v_min, u_max, v_max)
-
-	def show_img(self, image, title=''):
-		fig, ax = plt.subplots(figsize=(self.width / 100, self.height / 100), dpi=100)
-		ax.imshow(image)
-		plt.title(title)
-		plt.axis('off')
-		plt.show()
-
-	def draw_bounding_boxes(self, image, boxes=[], labels=[], color='yellow', title=''):
-		fig, axs = plt.subplots(1, 2, figsize=(2 * self.width / 100, self.height / 100), dpi=100)
-
-		# Subplot 1: Raw image
-		axs[0].imshow(image)
-		axs[0].set_title("Raw Image")
-		axs[0].axis('off')
-
-		# Subplot 2: Image with bounding boxes
-		axs[1].imshow(image)
-		axs[1].set_title("Image with Bounding Boxes")
-		for i, (u_min, v_min, u_max, v_max) in enumerate(boxes):
-			rect = patches.Rectangle(
-				(u_min, v_min), u_max - u_min, v_max - v_min,
-				linewidth=2, edgecolor=color, facecolor='none'
-			)
-			axs[1].add_patch(rect)
-			if labels and i < len(labels):
-				axs[1].text(u_min, v_min-10, labels[i], color=color,
-							fontsize=8, backgroundcolor='black')
-		axs[1].axis('off')
-		
-		plt.suptitle(title)
-		plt.tight_layout()
-		plt.show()
