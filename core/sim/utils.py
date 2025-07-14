@@ -5,6 +5,11 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import trimesh
+from typing import Optional, List, Tuple, Dict, Any
+from PIL import Image
+import json
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 def decompose_obj(directory, obj_name):
 	input_path = os.path.join(directory, f"{obj_name}.obj")
@@ -189,6 +194,13 @@ def random_tilt(pos, orn, max_shift=0.05, shift_end=False, tilt_angle=10):
 
 	return new_pos, new_orn
 
+def random_pos(x_range, y_range, z_range):
+    return [
+        random.uniform(*x_range),
+        random.uniform(*y_range),
+        random.uniform(*z_range)
+    ]
+
 class PyBulletSim:
 	def __init__(self, mode=p.DIRECT):
 		try:
@@ -224,3 +236,125 @@ class PyBulletSim:
 			p.disconnect()
 		except:
 			pass
+
+def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None) -> Tuple[str, int]:
+	"""
+	Selects a rearrangement directory either randomly or by a specific scene ID.
+
+	This helper function centralizes the logic for finding and selecting a
+	rearrangement directory from the dataset.
+	"""
+	if not os.path.exists(dataset_dir):
+		raise FileNotFoundError(f"Dataset directory '{dataset_dir}' does not exist")
+
+	# Find all valid rearrangement directories
+	rearrangement_dirs = [
+		item for item in os.listdir(dataset_dir)
+		if os.path.isdir(os.path.join(dataset_dir, item)) and item.startswith('rearrangement_')
+	]
+
+	if not rearrangement_dirs:
+		raise FileNotFoundError(f"No rearrangement directories found in '{dataset_dir}'")
+
+	selected_dir_name = None
+	if scene_id is not None:
+		# Load a specific scene by ID
+		target_dir = f"rearrangement_{scene_id:05d}"
+		if target_dir not in rearrangement_dirs:
+			raise FileNotFoundError(f"Rearrangement with scene ID {scene_id} not found")
+		selected_dir_name = target_dir
+		print(f"Loading specific rearrangement: {selected_dir_name}")
+	else:
+		# Select a directory at random
+		selected_dir_name = random.choice(rearrangement_dirs)
+		scene_id = int(selected_dir_name.split('_')[-1])
+		print(f"Loading random rearrangement: {selected_dir_name}")
+
+	# Return the full path to the selected directory and the scene ID
+	full_path = os.path.join(dataset_dir, selected_dir_name)
+	return full_path, scene_id
+
+def draw_bboxes(ax, image_path, label_path, title):
+	"""Draws bounding boxes on an image axis."""
+	# Load image
+	image = Image.open(image_path)
+	ax.imshow(image)
+	ax.set_title(title)
+	ax.axis('off')
+
+	# Load labels
+	with open(label_path, 'r') as f:
+		labels = json.load(f)
+
+	# Draw each bounding box
+	for obj in labels:
+		bbox = obj['bbox']
+		xmin, ymin, xmax, ymax = bbox
+		width, height = xmax - xmin, ymax - ymin
+
+		rect = patches.Rectangle(
+			(xmin, ymin), width, height,
+			linewidth=2, edgecolor='yellow', facecolor='none'
+		)
+		ax.add_patch(rect)
+		ax.text(xmin, ymin - 10, f"{obj['obj_id']}_{obj['model_name']}", color='yellow', fontsize=8)
+
+def visualize_rearrangement(dataset_dir: str="dataset", scene_id: Optional[int]=None, show_bbx=False):
+	"""
+	Visualizes the initial and target scenes of a rearrangement.
+	"""
+	try:
+		# Use the helper function to select the directory
+		selected_dir_path, scene_id_val = select_rearrangement_dir(dataset_dir, scene_id)
+	except FileNotFoundError as e:
+		print(e)
+		return
+
+	initial_img = os.path.join(selected_dir_path, 'initial_image.png')
+	target_img = os.path.join(selected_dir_path, 'target_image.png')
+	initial_lbl = os.path.join(selected_dir_path, 'initial_labels.json')
+	target_lbl = os.path.join(selected_dir_path, 'target_labels.json')
+
+	if not all(os.path.exists(p) for p in [initial_img, target_img, initial_lbl, target_lbl]):
+		print(f"One or more image/label files are missing in {selected_dir_path}.")
+		return
+
+	fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+	if show_bbx:
+		draw_bboxes(axes[0], initial_img, initial_lbl, title='Initial Scene')
+		draw_bboxes(axes[1], target_img, target_lbl, title='Target Scene')
+	else:
+		axes[0].imshow(Image.open(initial_img))
+		axes[0].set_title('Initial Scene')
+		axes[0].axis('off')
+
+		axes[1].imshow(Image.open(target_img))
+		axes[1].set_title('Target Scene')
+		axes[1].axis('off')
+
+	fig.suptitle(f'Scene ID: {scene_id_val}')
+	plt.tight_layout()
+	plt.show()
+
+def load_rearrangement_meta(dataset_dir: str="dataset", scene_id: Optional[int]=None) -> Optional[dict]:
+	"""
+	Loads a rearrangement meta file either by scene ID or randomly.
+	"""
+	try:
+		# Use the helper function to select the directory
+		selected_dir_path, _ = select_rearrangement_dir(dataset_dir, scene_id)
+	except FileNotFoundError as e:
+		print(e)
+		return None
+
+	meta_file_path = os.path.join(selected_dir_path, 'meta.json')
+
+	if not os.path.exists(meta_file_path):
+		print(f"meta.json not found in {os.path.basename(selected_dir_path)}")
+		return None
+
+	# Load and return the meta file
+	with open(meta_file_path, 'r') as f:
+		meta_data = json.load(f)
+
+	return meta_data
