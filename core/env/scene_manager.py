@@ -20,7 +20,7 @@ OBJECTS = {
 	8: {"name": "bowl", "color": "green", "category": "cat3", "size": (13, 13)},
 	9: {"name": "basket", "color": "blue", "category": "cat4", "size": (25, 25)},
 	10: {"name": "box", "color": "blue", "category": "cat4", "size": (23, 23)},
-	11: {"name": "pan", "color": "blue", "category": "cat4", "size": (27, 27)}
+	11: {"name": "pot", "color": "blue", "category": "cat4", "size": (27, 27)}
 }
 
 CATEGORY_STABILITY = {
