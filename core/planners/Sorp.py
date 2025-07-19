@@ -3,9 +3,9 @@ import time
 import numpy as np
 from tqdm import tqdm
 from typing import Union, List, Tuple, Optional, Dict
-from core.planners.utils import BaseSearch, copy_state, reconstruct_path
+from core.planners.planning_utils import BaseSearch, reconstruct_path
 from core.planners.Labbe import Labbe_S
-from core.env.scene_manager import Indices, build_parent_of
+from core.env.scene_manager import Indices, build_parent_of, copy_state
 
 
 class MctsNode:
