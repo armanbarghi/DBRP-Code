@@ -7,6 +7,7 @@ import spatialmath as sm
 from roboticstoolbox.tools.types import ArrayLike
 from typing import Union
 
+
 class Joint(object):
 	"""Represents a robot joint with position control capabilities."""
 
@@ -326,7 +327,6 @@ class RobotController:
 		# Calculate total duration and number of waypoints
 		duration = distance / self.arm_speed
 		num_waypoints = max(int(duration / self.waypoint_duration), 2)
-		print(f"duration: {duration:.2f}s, num_waypoints: {num_waypoints}")
 
 		# sweep through the straight‑line path
 		path = self.generate_linear_path(current_pose, target_pose, num_waypoints=num_waypoints, orientation=target_orientation)

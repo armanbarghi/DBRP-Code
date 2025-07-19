@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 import pybullet as p
@@ -209,13 +210,14 @@ class CameraManager:
 		world_point = self.R @ point_in_cam_cv + self.t.flatten()
 		return world_point
 
-	def compute_2d_bounding_box(self, body_name, body_id, body_type, num_samples=500, padding=3):
+	def compute_2d_bounding_box(self, objects_dir, body_name, body_id, body_type, num_samples=500, padding=3):
 		"""
-		Sample points on the object’s mesh, check for occlusion, project visible points,
+		Sample points on the object's mesh, check for occlusion, project visible points,
 		and return the 2D bounding box and visibility ratio.
 		A padding can be added to dilate the box.
 		"""
-		mesh_path = f"core/sim/objects/{body_name}/{body_name}_{body_type}/{body_name}_{body_type}.obj"
+		object_body_path = os.path.join(objects_dir, body_name, f"{body_name}_{body_type}")
+		mesh_path = os.path.join(object_body_path, f"{body_name}_{body_type}.obj")
 		mesh = trimesh.load_mesh(mesh_path)
 		points, _ = trimesh.sample.sample_surface(mesh, num_samples)
 		pos, orn = p.getBasePositionAndOrientation(body_id)
