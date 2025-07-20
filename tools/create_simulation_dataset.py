@@ -70,7 +70,6 @@ def generate_image_and_label(
 		label_path = os.path.join(folder_path, f'initial_labels.json')
 
 	z = get_object_extents(table)[2]
-	x_range, y_range = [-0.5, 0.5], [-0.5, 0.5]
 
 	if initial_objects:
 		initial_labels_path = os.path.join(folder_path, 'initial_labels.json')
@@ -92,7 +91,7 @@ def generate_image_and_label(
 			)
 
 		# Adjust objects for target scene
-		objects = adjust_objects_for_target_scene(initial_objects, meta_data, x_range, y_range, z, grid_size)
+		objects = adjust_objects_for_target_scene(initial_objects, meta_data, z, grid_size)
 	else:
 		# For initial scene, use random viewpoint
 		cam = CameraManager()
@@ -111,7 +110,7 @@ def generate_image_and_label(
 		
 		# Generate objects for the initial scene
 		objects = generate_scene_objects_from_meta(
-			objs_dir, meta_data, x_range, y_range, z, grid_size,
+			objs_dir, meta_data, z, grid_size,
 			target_mode=False,
 		)
 

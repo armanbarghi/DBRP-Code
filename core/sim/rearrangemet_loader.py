@@ -134,20 +134,33 @@ def load_rearrangement_meta(dataset_dir: str, scene_id: Optional[int]=None) -> O
 
 	return meta_data
 
-def grid_to_world_coords(grid_pos, world_x_range, world_y_range, grid_size=(100, 100)):
+def grid_to_world_coords(grid_pos, grid_size=(100, 100), units_per_meter=100):
 	"""
-	Maps a 2D grid coordinate to a 3D world coordinate on the XY plane.
+	Maps a 2D grid coordinate to a 3D world coordinate on the XY plane,
+	centered at (0,0).
 	"""
+	world_width = grid_size[0] / units_per_meter
+	world_height = grid_size[1] / units_per_meter
+
+	world_x_range = [-world_width / 2, world_width / 2]
+	world_y_range = [-world_height / 2, world_height / 2]
+
 	norm_x = grid_pos[0] / grid_size[0]
 	norm_y = grid_pos[1] / grid_size[1]
 	world_x = world_x_range[0] + norm_x * (world_x_range[1] - world_x_range[0])
 	world_y = world_y_range[0] + norm_y * (world_y_range[1] - world_y_range[0])
 	return world_x, world_y
 
-def world_to_grid_coords(world_pos, world_x_range, world_y_range, grid_size=(100, 100)):
+def world_to_grid_coords(world_pos, grid_size=(100, 100), units_per_meter=100):
 	"""
 	Maps a 3D world coordinate on the XY plane to a 2D grid coordinate.
 	"""
+	world_width = grid_size[0] / units_per_meter
+	world_height = grid_size[1] / units_per_meter
+
+	world_x_range = [-world_width / 2, world_width / 2]
+	world_y_range = [-world_height / 2, world_height / 2]
+
 	world_x, world_y = world_pos[0], world_pos[1]
 
 	# De-normalize the world coordinates to a [0, 1] range
@@ -182,7 +195,7 @@ def choose_least_used_body_type(model_name, available_body_types, counter):
 	counter[model_name][chosen] += 1
 	return chosen
 
-def generate_scene_objects_from_meta(objects_dir, scene_meta, world_x_range, world_y_range, z, grid_size, target_mode=False):
+def generate_scene_objects_from_meta(objects_dir, scene_meta, z, grid_size, target_mode=False):
 	"""
 	Generates scene objects from metadata, assigning new body types for visual diversity.
 	This is used when creating a new scene arrangement for the first time.
@@ -202,7 +215,7 @@ def generate_scene_objects_from_meta(objects_dir, scene_meta, world_x_range, wor
 			'object_id': i,
 			'label': label,
 			'model_name': model_name,
-			'pos': grid_to_world_coords(grid_pos, world_x_range, world_y_range, grid_size),
+			'pos': grid_to_world_coords(grid_pos, grid_size),
 			'base_id': base_id,
 		})
 
@@ -247,7 +260,7 @@ def generate_scene_objects_from_meta(objects_dir, scene_meta, world_x_range, wor
 
 	return objects
 
-def adjust_objects_for_target_scene(objects, scene_meta, world_x_range, world_y_range, z, grid_size):
+def adjust_objects_for_target_scene(objects, scene_meta, z, grid_size):
 	"""
 	Adjusts existing objects dictionary for target scene configuration.
 	Only updates position, base_id, stack_hierarchy, final_pos, and final_orn.
@@ -266,7 +279,7 @@ def adjust_objects_for_target_scene(objects, scene_meta, world_x_range, world_y_
 		grid_pos = meta_obj['target_pos']
 		
 		# Update position and base_id from metadata
-		obj['pos'] = grid_to_world_coords(grid_pos, world_x_range, world_y_range, grid_size)
+		obj['pos'] = grid_to_world_coords(grid_pos, grid_size)
 		obj['base_id'] = meta_obj['target_base_id']
 	
 	# Create a lookup map for objects by their ID
