@@ -59,6 +59,9 @@ def load_table_urdf(objects_dir, grid_size, pos=[0, 0, 0]):
 	if grid_size == (100, 100):
 		table_dir = os.path.join(objects_dir, "table", "table_1.1")
 		urdf_filename = "table_1.1.urdf"
+	if grid_size == (100, 200):
+		table_dir = os.path.join(objects_dir, "table", "table_1.2")
+		urdf_filename = "table_1.2.urdf"
 	elif grid_size == (100, 300):
 		table_dir = os.path.join(objects_dir, "table", "table_1.3")
 		urdf_filename = "table_1.3.urdf"
