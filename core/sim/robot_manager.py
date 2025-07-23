@@ -38,7 +38,7 @@ class RobotController:
 
 	def __init__(self, model_path, rtb_model,
 				scale=1, initial_base_pos=[0, 0, 0],
-				mode='stationary', use_fixed_base=True,):
+				mode='stationary', use_fixed_base=True, table_size=[1, 1]):
 		self.robot_id = p.loadURDF(
 			model_path,
 			initial_base_pos,
@@ -53,12 +53,20 @@ class RobotController:
 		self._right_finger_joint_id = 10
 		self._end_effector_link_id = 11
 		
-		self.workspace_x_limits = [initial_base_pos[0], -initial_base_pos[0]]
-		self.workspace_y_limits = [initial_base_pos[0], -initial_base_pos[0]]
+		dis_from_table = abs(initial_base_pos[0]) - table_size[0] / 2
+		self.workspace_x_limits = [
+			initial_base_pos[0], 
+			table_size[0] / 2 + dis_from_table
+		]
+		self.workspace_y_limits = [
+			-table_size[1] / 2 - dis_from_table,
+			table_size[1] / 2 + dis_from_table
+		]
+
 		self.mode = mode
 
 		# Speed settings (m/s or rad/s)
-		self.arm_speed = 0.1
+		self.arm_speed = 0.2
 		self.base_speed = 0.3
 		self.base_rotation_speed = 1
 
@@ -104,17 +112,11 @@ class RobotController:
 		for joint_id in range(len(self.initial_poses)):
 			p.resetJointState(self.robot_id, joint_id, self.initial_poses[joint_id])
 
-		self.init_ee_pos = self.get_ee_pos()
-
-	def reset_ee(self):
-		"""Reset end-effector to initial pose."""
-		self.move_end_effector(self.init_ee_pos[0], self.init_ee_pos[1])
-
 	def get_pos(self):
 		"""Get current joint positions."""
 		return [self.joints[i].get_position() for i in range(7)]
 
-	def get_ee_pos(self):
+	def get_ee_pose(self):
 		"""Get end-effector position and orientation."""
 		ee_pos, ee_orn = p.getLinkState(self.robot_id, self._end_effector_link_id)[:2]
 		return ee_pos, ee_orn
@@ -168,7 +170,7 @@ class RobotController:
 	def rotate_gripper_yaw(self, yaw_angle, duration=0.5):
 		"""Rotate gripper to target yaw angle smoothly."""
 		# 1) get full EE rotation matrix
-		q = self.get_ee_pos()[1]
+		q = self.get_ee_pose()[1]
 		R = np.array(p.getMatrixFromQuaternion(q)).reshape(3,3)
 
 		# 2) EE's local Z axis in world frame
@@ -302,7 +304,7 @@ class RobotController:
 			
 		else:
 			# grab current EE quaternion and extract yaw
-			ee_quat = self.get_ee_pos()[1]
+			ee_quat = self.get_ee_pose()[1]
 			_, _, current_yaw = p.getEulerFromQuaternion(ee_quat)
 			# do a straight-line move keeping that same yaw
 			target_orientation = [np.pi, 0, current_yaw]
@@ -312,7 +314,7 @@ class RobotController:
 	def move_end_effector(self, target_position, target_orientation):
 		"""Move end-effector through linear path to target pose."""
 		# get current EE pose as SM.SE3
-		position, orientation = self.get_ee_pos()
+		position, orientation = self.get_ee_pose()
 		distance = np.linalg.norm(np.array(target_position) - np.array(position))
 		
 		if distance == 0:
@@ -462,6 +464,69 @@ class RobotController:
 					self.move_base_to_corner(current_side, '2', mapped_target[2])
 					self.move_base_to_corner('2', target_side, mapped_target[2])
 			self.move_base(mapped_target)
+
+	def rotate_grasped_object(self, target_world_orn, duration=1.0, steps=20):
+		"""
+		Rotates the grasped object to a target orientation in the world frame.
+
+		This is achieved by removing and recreating the grasp constraint at each step
+		of a smooth interpolation, without moving the robot's joints.
+
+		Args:
+			target_world_orn (list): Target orientation as Euler angles [roll, pitch, yaw].
+			duration (float): The total time the rotation should take.
+			steps (int): The number of intermediate steps for the interpolation.
+		"""
+		if self._grasped_object_id is None or self._grasp_constraint_id is None:
+			print("Error: No object is currently grasped.")
+			return
+
+		# Get the object's starting pose and the end-effector's inverse pose
+		obj_pos_world, start_obj_orn_world = p.getBasePositionAndOrientation(self._grasped_object_id)
+		ee_pos, ee_orn = p.getLinkState(self.robot_id, self._end_effector_link_id)[:2]
+		inv_ee_pos, inv_ee_orn = p.invertTransform(ee_pos, ee_orn)
+
+		# Convert target Euler angles to a quaternion
+		target_obj_orn_world = p.getQuaternionFromEuler(target_world_orn)
+
+		# Interpolate the rotation over several steps
+		for i in range(steps):
+			interp_frac = (i + 1) / float(steps)
+
+			# Use getQuaternionSlerp for spherical linear interpolation
+			interp_obj_orn_world = p.getQuaternionSlerp(start_obj_orn_world, target_obj_orn_world, interp_frac)
+
+			# Calculate the new relative pose of the object with respect to the end-effector
+			# T_relative = T_end_effector_inverse * T_object_world
+			new_rel_pos, new_rel_orn = p.multiplyTransforms(
+				inv_ee_pos,
+				inv_ee_orn,
+				obj_pos_world,         # Keep the object's world position constant
+				interp_obj_orn_world   # Use the new interpolated world orientation
+			)
+
+			# Remove the old constraint
+			p.removeConstraint(self._grasp_constraint_id)
+
+			# Create a new fixed constraint with the updated relative orientation
+			new_constraint_id = p.createConstraint(
+				parentBodyUniqueId=self.robot_id,
+				parentLinkIndex=self._end_effector_link_id,
+				childBodyUniqueId=self._grasped_object_id,
+				childLinkIndex=-1,
+				jointType=p.JOINT_FIXED,
+				jointAxis=[0, 0, 0],
+				parentFramePosition=new_rel_pos,
+				parentFrameOrientation=new_rel_orn,
+				childFramePosition=[0, 0, 0],
+				childFrameOrientation=[0, 0, 0, 1]
+			)
+
+			# Update the stored constraint ID
+			self._grasp_constraint_id = new_constraint_id
+
+			p.stepSimulation()
+			time.sleep(duration / steps)
 
 	def pick_object(self, obj_id, target_yaw=None, approach_height=0.3, grasp_height=0.1):
 		"""Pick up object by grasping and creating constraint."""
