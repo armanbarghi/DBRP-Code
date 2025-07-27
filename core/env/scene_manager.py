@@ -1212,11 +1212,15 @@ class SceneManager:
 		size = self.current_x[obj, Indices.SIZE].tolist()
 		hh, hw = size[0] // 2, size[1] // 2
 
+		# Exclude the object’s current center (we typically don’t want no-op moves).
+		if torch.equal(center, self.current_x[obj, Indices.COORD]):
+			return True
+
 		# Out-of-bounds check
 		if not (hh <= coor[0] < H-hh and hw <= coor[1] < W-hw):
 			return True
 
-		# Slice the occupancy map (excluding this object)
+		# Slice the occupancy map (excluding this object's foorprint)
 		obj_id = obj + 1
 		footprint = self.current_table[get_patch_slice(coor, size, self.grid_size)]
 		occupied = ((footprint != 0) & (footprint != obj_id)).any()
