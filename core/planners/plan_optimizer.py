@@ -87,7 +87,7 @@ def plan_refinement(env, plan, initial_scene, target_scene, refine_mode=None, ve
 		if refine_mode == "stack":
 			action_seq = buffer_optimality_stack(env, action_seq, initial_scene, target_scene, verbose=verbose)
 		elif refine_mode == "move":
-			action_seq = buffer_optimality(env, action_seq, initial_scene, target_scene, verbose=verbose)
+			action_seq = buffer_optimality_move(env, action_seq, initial_scene, target_scene, verbose=verbose)
 		else:
 			raise ValueError(f'Unknown refinement mode: {refine_mode}')
 
@@ -120,7 +120,7 @@ def action_seq_to_plan(env, action_seq):
             plan.append(env.encode_move(a['k'], a['p_place']))
     return plan
 
-def buffer_optimality(env, action_seq, initial_scene, target_scene, verbose=0):
+def buffer_optimality_move(env, action_seq, initial_scene, target_scene, verbose=0):
 	"""Core refinement logic for simple (move-only) plans"""
 	env.reset(initial_scene, target_scene)
 	plan = action_seq_to_plan(env, action_seq)
@@ -177,9 +177,6 @@ def buffer_optimality(env, action_seq, initial_scene, target_scene, verbose=0):
 			for p in P:
 				# Skip if this position is the same as the final placement position
 				if action_seq[i]['type'] == 'move' and torch.equal(p.to(torch.long), action_seq[i]['p_place']):
-					env.step(plan[i])
-					H[i+1] = env.get_state()
-					B[k] = i
 					continue
 
 				cost = torch.norm(p1 - p)
@@ -287,9 +284,6 @@ def buffer_optimality_stack(env, action_seq, initial_scene, target_scene, verbos
 			for p in P:
 				# Skip if this position is the same as the final placement position (for move actions)
 				if action_seq[i]['type'] == 'move' and torch.equal(p.to(torch.long), action_seq[i]['p_place']):
-					env.step(plan[i])
-					H[i+1] = env.get_state()
-					B[k] = i
 					continue
 
 				cost = torch.norm(p1 - p)
@@ -306,9 +300,6 @@ def buffer_optimality_stack(env, action_seq, initial_scene, target_scene, verbos
 			for empty_obj in empty_objs:
 				# Skip if this object is the same as the final placement object (for stack actions)
 				if action_seq[i]['type'] == 'stack' and action_seq[i]['l'] == empty_obj:
-					env.step(plan[i])
-					H[i+1] = env.get_state()
-					B[k] = i
 					continue
 
 				p_to_buff = H[b]['current'][empty_obj, Indices.COORD].float()
