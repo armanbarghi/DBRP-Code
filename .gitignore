@@ -58,6 +58,8 @@ __pycache__/
 
 # Environments
 venv/
+dataset*/
+yolov5/
 
 # Blender file
 core/sim/objects/*/*/*.blend
