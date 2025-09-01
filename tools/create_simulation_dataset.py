@@ -16,7 +16,7 @@ from core.sim.physics_utils import (
 	PyBulletSim, load_table_urdf, get_object_extents, get_object_type_max_footprints
 )
 from core.sim.camera_manager import CameraManager
-from core.sim.rearrangemet_loader import generate_scene_objects_from_meta, adjust_objects_for_target_scene
+from core.sim.rearrangemet_loader import generate_scene_objects_from_meta, adjust_objects_for_scene
 
 
 def remove_all_objects_except_table(table_body_id):
@@ -91,7 +91,7 @@ def generate_image_and_label(
 			)
 
 		# Adjust objects for target scene
-		objects = adjust_objects_for_target_scene(initial_objects, meta_data, z, grid_size)
+		objects = adjust_objects_for_scene(initial_objects, meta_data, z, grid_size, scene="target")
 	else:
 		# For initial scene, use random viewpoint
 		cam = CameraManager()
