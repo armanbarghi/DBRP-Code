@@ -22,28 +22,21 @@ def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None) -> 
 	if not os.path.exists(dataset_dir):
 		raise FileNotFoundError(f"Dataset directory '{dataset_dir}' does not exist")
 
-	# Find all valid rearrangement directories
-	rearrangement_dirs = [
-		item for item in os.listdir(dataset_dir)
-		if os.path.isdir(os.path.join(dataset_dir, item)) and item.startswith('rearrangement_')
-	]
-
-	if not rearrangement_dirs:
-		raise FileNotFoundError(f"No rearrangement directories found in '{dataset_dir}'")
-
 	selected_dir_name = None
 	if scene_id is not None:
 		# Load a specific scene by ID
-		target_dir = f"rearrangement_{scene_id:05d}"
-		if target_dir not in rearrangement_dirs:
-			raise FileNotFoundError(f"Rearrangement with scene ID {scene_id} not found")
-		selected_dir_name = target_dir
-		print(f"Loading specific rearrangement: {selected_dir_name}")
+		selected_dir_name = f"rearrangement_{scene_id:05d}"
 	else:
+		# Find all valid rearrangement directories
+		rearrangement_dirs = [
+			item for item in os.listdir(dataset_dir)
+			if os.path.isdir(os.path.join(dataset_dir, item)) and item.startswith('rearrangement_')
+		]
+		if not rearrangement_dirs:
+			raise FileNotFoundError(f"No rearrangement directories found in '{dataset_dir}'")
 		# Select a directory at random
 		selected_dir_name = random.choice(rearrangement_dirs)
 		scene_id = int(selected_dir_name.split('_')[-1])
-		print(f"Loading random rearrangement: {selected_dir_name}")
 
 	# Return the full path to the selected directory and the scene ID
 	full_path = os.path.join(dataset_dir, selected_dir_name)
@@ -118,14 +111,12 @@ def load_rearrangement_meta(dataset_dir: str, scene_id: Optional[int]=None) -> O
 	try:
 		# Use the helper function to select the directory
 		selected_dir_path, _ = select_rearrangement_dir(dataset_dir, scene_id)
+		meta_file_path = os.path.join(selected_dir_path, 'meta.json')
+		if not os.path.exists(meta_file_path):
+			print(f"meta.json not found in {os.path.basename(selected_dir_path)}")
+			return None
 	except FileNotFoundError as e:
 		print(e)
-		return None
-
-	meta_file_path = os.path.join(selected_dir_path, 'meta.json')
-
-	if not os.path.exists(meta_file_path):
-		print(f"meta.json not found in {os.path.basename(selected_dir_path)}")
 		return None
 
 	# Load and return the meta file
@@ -195,7 +186,7 @@ def choose_least_used_body_type(model_name, available_body_types, counter):
 	counter[model_name][chosen] += 1
 	return chosen
 
-def generate_scene_objects_from_meta(objects_dir, scene_meta, z, grid_size, target_mode=False):
+def generate_scene_objects_from_meta(objects_dir: str, scene_meta, z, grid_size, target_mode=False):
 	"""
 	Generates scene objects from metadata, assigning new body types for visual diversity.
 	This is used when creating a new scene arrangement for the first time.
@@ -260,70 +251,13 @@ def generate_scene_objects_from_meta(objects_dir, scene_meta, z, grid_size, targ
 
 	return objects
 
-def adjust_objects_for_target_scene(objects, scene_meta, z, grid_size):
-	"""
-	Adjusts existing objects dictionary for target scene configuration.
-	Only updates position, base_id, stack_hierarchy, final_pos, and final_orn.
-	All other properties (object_id, label, model_name, body_id, body_type) remain the same.
-	"""
-	# Create a copy of objects to avoid modifying the original
-	t_objects = []
-	for obj in objects:
-		t_obj = obj.copy()
-		t_objects.append(t_obj)
-	
-	# Update target-specific properties from metadata
-	for obj in t_objects:
-		object_id = obj['object_id']
-		meta_obj = scene_meta['objects'][object_id]
-		grid_pos = meta_obj['target_pos']
-		
-		# Update position and base_id from metadata
-		obj['pos'] = grid_to_world_coords(grid_pos, grid_size)
-		obj['base_id'] = meta_obj['target_base_id']
-	
-	# Create a lookup map for objects by their ID
-	objects_by_id = {obj['object_id']: obj for obj in t_objects}
-	
-	# Calculate stack hierarchy for each object
-	for obj in t_objects:
-		stack_hierarchy = 0
-		j = obj['base_id']
-		while j is not None:
-			stack_hierarchy += 1
-			# Guard against malformed hierarchies
-			if j in objects_by_id:
-				j = objects_by_id[j]['base_id']
-			else:
-				j = None  # Break loop if base_id is not found
-		obj['stack_hierarchy'] = stack_hierarchy
-	
-	# Sort objects by stack hierarchy to process them bottom-up
-	t_objects.sort(key=lambda x: x['stack_hierarchy'])
-	
-	# Recalculate final positions and orientations for stacking
-	for obj in t_objects:
-		pos, orn = adjust_object_pose_for_stacking(obj, t_objects, z)
-		obj['final_pos'] = pos
-		obj['final_orn'] = orn
-		
-	# Re-sort by object_id to maintain original order
-	t_objects.sort(key=lambda x: x['object_id'])
-
-	# Update PyBullet object positions and orientations
-	for obj in t_objects:
-		orn_quat = p.getQuaternionFromEuler(obj['final_orn'])
-		p.resetBasePositionAndOrientation(obj['body_id'], obj['final_pos'], orn_quat)
-
-	return t_objects
-
-def load_scene_objects_from_labels(objects_dir: str, dataset_dir: str):
+def load_scene_objects_from_labels(objects_dir: str, rearrangement_path: str):
 	"""
 	Loads scene objects for an existing rearrangement problem from saved label files.
 	This reconstructs a scene that has already been generated and saved.
 	"""
-	initial_label_path = os.path.join(dataset_dir, 'initial_labels.json')
-	target_label_path = os.path.join(dataset_dir, 'target_labels.json')
+	initial_label_path = os.path.join(rearrangement_path, 'initial_labels.json')
+	target_label_path = os.path.join(rearrangement_path, 'target_labels.json')
 	
 	if not os.path.exists(initial_label_path):
 		raise FileNotFoundError(f"Initial labels file not found: {initial_label_path}")
@@ -410,3 +344,67 @@ def load_scene_objects_from_labels(objects_dir: str, dataset_dir: str):
 	print(f"Loaded {len(objects)} objects with complete initial and target information")
 	
 	return objects
+
+def adjust_objects_for_scene(objects, scene_meta, z, grid_size, scene):
+	"""
+	Adjusts existing objects dictionary for target scene configuration.
+	Only updates position, base_id, stack_hierarchy, final_pos, and final_orn.
+	All other properties (object_id, label, model_name, body_id, body_type) remain the same.
+	"""
+	assert scene in ["target", "initial"], "Invalid scene type"
+
+	# Create a copy of objects to avoid modifying the original
+	t_objects = []
+	for obj in objects:
+		t_obj = obj.copy()
+		t_objects.append(t_obj)
+	
+	# Update target-specific properties from metadata
+	for obj in t_objects:
+		object_id = obj['object_id']
+		meta_obj = scene_meta['objects'][object_id]
+		
+		# Update position and base_id from metadata
+		if scene == "target":
+			grid_pos = meta_obj['target_pos']
+			obj['base_id'] = meta_obj['target_base_id']
+		else:
+			grid_pos = meta_obj['initial_pos']
+			obj['base_id'] = meta_obj['initial_base_id']
+
+		obj['pos'] = grid_to_world_coords(grid_pos, grid_size)
+
+	# Create a lookup map for objects by their ID
+	objects_by_id = {obj['object_id']: obj for obj in t_objects}
+	
+	# Calculate stack hierarchy for each object
+	for obj in t_objects:
+		stack_hierarchy = 0
+		j = obj['base_id']
+		while j is not None:
+			stack_hierarchy += 1
+			# Guard against malformed hierarchies
+			if j in objects_by_id:
+				j = objects_by_id[j]['base_id']
+			else:
+				j = None  # Break loop if base_id is not found
+		obj['stack_hierarchy'] = stack_hierarchy
+	
+	# Sort objects by stack hierarchy to process them bottom-up
+	t_objects.sort(key=lambda x: x['stack_hierarchy'])
+	
+	# Recalculate final positions and orientations for stacking
+	for obj in t_objects:
+		pos, orn = adjust_object_pose_for_stacking(obj, t_objects, z)
+		obj['final_pos'] = pos
+		obj['final_orn'] = orn
+		
+	# Re-sort by object_id to maintain original order
+	t_objects.sort(key=lambda x: x['object_id'])
+
+	# Update PyBullet object positions and orientations
+	for obj in t_objects:
+		orn_quat = p.getQuaternionFromEuler(obj['final_orn'])
+		p.resetBasePositionAndOrientation(obj['body_id'], obj['final_pos'], orn_quat)
+
+	return t_objects
