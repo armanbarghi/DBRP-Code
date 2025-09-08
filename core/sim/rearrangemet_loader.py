@@ -12,7 +12,7 @@ from core.env.scene_manager import OBJECTS
 from core.sim.physics_utils import load_object_urdf, adjust_object_pose_for_stacking
 
 
-def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None) -> Tuple[str, int]:
+def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None, viewpoint_id: Optional[int]=None) -> Tuple[str, int]:
 	"""
 	Selects a rearrangement directory either randomly or by a specific scene ID.
 
@@ -26,6 +26,7 @@ def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None) -> 
 	if scene_id is not None:
 		# Load a specific scene by ID
 		selected_dir_name = f"rearrangement_{scene_id:05d}"
+		full_path = os.path.join(dataset_dir, selected_dir_name)
 	else:
 		# Find all valid rearrangement directories
 		rearrangement_dirs = [
@@ -34,12 +35,27 @@ def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None) -> 
 		]
 		if not rearrangement_dirs:
 			raise FileNotFoundError(f"No rearrangement directories found in '{dataset_dir}'")
-		# Select a directory at random
-		selected_dir_name = random.choice(rearrangement_dirs)
-		scene_id = int(selected_dir_name.split('_')[-1])
+		
+		if viewpoint_id:
+			vp_id = -1
+			while vp_id != viewpoint_id:
+				# Select a directory at random
+				selected_dir_name = random.choice(rearrangement_dirs)
+				scene_id = int(selected_dir_name.split('_')[-1])
+
+				full_path = os.path.join(dataset_dir, selected_dir_name)
+				initial_lbl = os.path.join(full_path, 'initial_labels.json')
+				with open(initial_lbl, 'r') as f:
+					labels = json.load(f)
+				cam_info = labels['camera_info']
+				vp_id = cam_info['viewpoint_id']
+		else:
+			# Select a directory at random
+			selected_dir_name = random.choice(rearrangement_dirs)
+			scene_id = int(selected_dir_name.split('_')[-1])
+			full_path = os.path.join(dataset_dir, selected_dir_name)
 
 	# Return the full path to the selected directory and the scene ID
-	full_path = os.path.join(dataset_dir, selected_dir_name)
 	return full_path, scene_id
 
 def visualize_rearrangement(dataset_dir: str, scene_id: Optional[int]=None, show_bbx=False):
