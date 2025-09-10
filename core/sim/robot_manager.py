@@ -36,8 +36,7 @@ class Joint(object):
 class RobotController:
 	"""Controls robot in PyBullet simulation environment."""
 
-	def __init__(self, model_path, rtb_model,
-				scale=1, initial_base_pos=[0, 0, 0],
+	def __init__(self, model_path, scale=1, initial_base_pos=[0, 0, 0],
 				mode='stationary', use_fixed_base=True, table_size=[1, 1]):
 		self.robot_id = p.loadURDF(
 			model_path,
@@ -45,7 +44,7 @@ class RobotController:
 			globalScaling=scale,
 			useFixedBase=use_fixed_base
 		)
-		self.rtb_model = rtb_model
+		# self.rtb_model = rtb_model
 	
 		self._time_step = p.getPhysicsEngineParameters()['fixedTimeStep']
 		self._gripper_joint_id = 6
@@ -93,7 +92,7 @@ class RobotController:
 			joints[i] = Joint(self.robot_id, i, joint_limits)
 			# print(joint_info)
 		
-		self.rtb_model.qlim = np.array([[joints[i].limits['lower'], joints[i].limits['upper']] for i in range(7)]).T
+		# self.rtb_model.qlim = np.array([[joints[i].limits['lower'], joints[i].limits['upper']] for i in range(7)]).T
 		self.joints = joints
 		self._left_finger = self.joints[self._left_finger_joint_id]
 		self._right_finger = self.joints[self._right_finger_joint_id]
