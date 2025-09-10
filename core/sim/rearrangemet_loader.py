@@ -58,7 +58,7 @@ def select_rearrangement_dir(dataset_dir: str, scene_id: Optional[int]=None, vie
 	# Return the full path to the selected directory and the scene ID
 	return full_path, scene_id
 
-def visualize_rearrangement(dataset_dir: str, scene_id: Optional[int]=None, show_bbx=False):
+def visualize_rearrangement(dataset_dir: str, scene_id: Optional[int]=None, show_bbx=False, figsize=(9, 4)):
 	"""
 	Visualizes the initial and target scenes of a rearrangement.
 	"""
@@ -111,7 +111,7 @@ def visualize_rearrangement(dataset_dir: str, scene_id: Optional[int]=None, show
 		print(f"One or more image/label files are missing in {selected_dir_path}.")
 		return
 
-	fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+	fig, axes = plt.subplots(1, 2, figsize=figsize)
 
 	_draw_scene(axes[0], initial_img, initial_lbl, 'Initial Scene')
 	_draw_scene(axes[1], target_img, target_lbl, 'Target Scene')
