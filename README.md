@@ -2,7 +2,7 @@
 
 | Stationary Manipulation | Mobile Manipulation |
 | :---: | :---: |
-| ![Stationary](https://github.com/armanbarghi/DBRP-Code/tree/main/gifs/stationary.gif) | ![Mobile](https://github.com/armanbarghi/DBRP-Code/tree/main/gifs/mobile.gif) |
+| ![Stationary](https://raw.githubusercontent.com/armanbarghi/DBRP-Code/main/gifs/stationary.gif) | ![Mobile](https://raw.githubusercontent.com/armanbarghi/DBRP-Code/main/gifs/mobile.gif) |
 
 ## Real Robot Execution
-![Real Robot](https://github.com/armanbarghi/DBRP-Code/tree/main/gifs/real.gif)
+![Real Robot](https://raw.githubusercontent.com/armanbarghi/DBRP-Code/main/gifs/real.gif)
