@@ -2,10 +2,7 @@ import time
 import numpy as np
 import pybullet as p
 import pybullet_data
-import roboticstoolbox as rtb
 import spatialmath as sm
-from roboticstoolbox.tools.types import ArrayLike
-from typing import Union
 
 
 class Joint(object):
@@ -248,16 +245,22 @@ class RobotController:
 
 	def generate_linear_path(self, start_pose: sm.SE3, end_pose: sm.SE3, num_waypoints: int, orientation: list) -> np.ndarray:
 		"""Generate linear path between two poses."""
-		trajectory = rtb.ctraj(start_pose, end_pose, num_waypoints)
+		# Extract start/end positions
+		start_pos = np.array(start_pose.t).reshape(3)
+		end_pos = np.array(end_pose.t).reshape(3)
+
+		# Linear interpolation in Cartesian space
+		positions = np.linspace(start_pos, end_pos, num_waypoints)
 
 		path = np.zeros((num_waypoints, 7))
 		for i in range(num_waypoints):
+			target_se3 = sm.SE3(positions[i])
 			try:
-				path[i] = self.inverse_kinematics(trajectory[i], orientation)
+				path[i] = self.inverse_kinematics(target_se3, orientation)
 			except ValueError as e:
 				print(f"IK failed at point {i+1}/{num_waypoints}: {e}")
-				break  
-	
+				break
+
 		return path
 
 	def find_closest_table_side(self, position):
