@@ -67,16 +67,21 @@ def redundancy_pruning(env, plan, initial_scene, target_scene, verbose=0):
 
 	return action_seq
 
-def plan_refinement(env, plan, initial_scene, target_scene, refine_mode=None, verbose=0):
+def plan_refinement(env, plan, initial_scene, target_scene, refine_mode=None, redundancy=True, verbose=0):
 	env.static_stack = False
 	start_time = time.time()
 	cost = env_cost(env, plan, initial_scene, target_scene, log=False)
 	if plan is None:
 		return plan, cost, time.time() - start_time
 
-	# Perform redundancy pruning once at the beginning
-	action_seq = redundancy_pruning(env, plan, initial_scene, target_scene, verbose=verbose)
-	current_plan = action_seq_to_plan(env, action_seq)
+	if redundancy:
+		# Perform redundancy pruning once at the beginning
+		action_seq = redundancy_pruning(env, plan, initial_scene, target_scene, verbose=verbose)
+		current_plan = action_seq_to_plan(env, action_seq)
+	else:
+		action_seq = plan_to_action_seq(env, plan, initial_scene, target_scene)
+		current_plan = plan.copy()
+
 	best_plan = current_plan
 	best_cost = env_cost(env, best_plan, initial_scene, target_scene, log=False)
 	if best_cost > cost:
@@ -88,6 +93,8 @@ def plan_refinement(env, plan, initial_scene, target_scene, refine_mode=None, ve
 			action_seq = buffer_optimality_stack(env, action_seq, initial_scene, target_scene, verbose=verbose)
 		elif refine_mode == "move":
 			action_seq = buffer_optimality_move(env, action_seq, initial_scene, target_scene, verbose=verbose)
+		elif refine_mode is None:
+			break
 		else:
 			raise ValueError(f'Unknown refinement mode: {refine_mode}')
 
@@ -119,6 +126,32 @@ def action_seq_to_plan(env, action_seq):
         else:
             plan.append(env.encode_move(a['k'], a['p_place']))
     return plan
+
+def plan_to_action_seq(env, plan, initial_scene, target_scene):
+	"""Convert plan to action_seq using unified format"""
+	env.reset(initial_scene, target_scene)
+	action_seq = []
+
+	for action in plan:
+		action_type, start_obj, target_obj, coordinates = env.decode_action(action)
+		if action_type == 'stack':
+			p_place = env.current_x[target_obj, Indices.COORD].clone()
+		else:
+			p_place = coordinates.clone()
+		p_pick = env.current_x[start_obj, Indices.COORD].clone()
+
+
+		action_seq.append({
+			'type': action_type,
+			'k': start_obj,
+			'l': target_obj,
+			'p_pick': p_pick,
+			'p_place': p_place
+		})
+
+		env._step(action_type, start_obj, target_obj, coordinates)
+
+	return action_seq
 
 def buffer_optimality_move(env, action_seq, initial_scene, target_scene, verbose=0):
 	"""Core refinement logic for simple (move-only) plans"""
