@@ -6,3 +6,5 @@ seaborn
 PyBullet
 trimesh
 spatialmath-python
+tqdm
+opencv-python
