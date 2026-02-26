@@ -4,8 +4,7 @@ import numpy as np
 from tqdm import tqdm
 from core.planners.planning_utils import BaseSearch, reconstruct_path
 from core.env.scene_manager import (
-	Indices, copy_state, build_parent_of,
-    get_object_below, get_object_above, get_object_base
+	Indices, copy_state, get_object_below, get_object_above, get_object_base
 )
 from typing import List, Optional, Dict
 
@@ -274,11 +273,11 @@ class Labbe(LabbeMCTS):
 		return None
 
 	def solve(self, c: float=0.1, verbose: int=0, time_limit: int=1000):
-		if torch.sum(self.env.initial_x[:, Indices.RELATION]) > 0:
+		if torch.any(self.env.initial_x[:, Indices.PARENT] != -1):
 			raise ValueError('Initial scene has stacks in Non-stack mode')
-		if torch.sum(self.env.current_x[:, Indices.RELATION]) > 0:
+		if torch.any(self.env.current_x[:, Indices.PARENT] != -1):
 			raise ValueError('Current scene has stacks in Non-stack mode')
-		if torch.sum(self.env.target_x[:, Indices.RELATION]) > 0:
+		if torch.any(self.env.target_x[:, Indices.PARENT] != -1):
 			raise ValueError('Target scene has stacks in Non-stack mode')
 		return self._solve(c, verbose, time_limit)
 
@@ -291,16 +290,17 @@ class Labbe_S(LabbeMCTS):
 		current_x, target_x = state['current'], self.env.target_x
 
 		# Build parent‐of maps once
-		cur_parent = build_parent_of(current_x)
+		cur_parent = current_x[:, Indices.PARENT].squeeze()  # [N]
+		tgt_parent = target_x[:, Indices.PARENT].squeeze()  # [N]
 
 		# Stacking condition for objs that should be stacked
-		cond_stacked = (self.tgt_parent >= 0) & (cur_parent == self.tgt_parent)
+		cond_stacked = (tgt_parent >= 0) & (cur_parent == tgt_parent)
 
 		# Base condition for objs that should be on the table
 		cur_centers = current_x[:, Indices.COORD]
 		tgt_centers = target_x[:, Indices.COORD]
 		base_match = (cur_centers == tgt_centers).all(dim=1)  # [N]
-		cond_base    = (self.tgt_parent < 0) & (cur_parent < 0) & base_match
+		cond_base    = (tgt_parent < 0) & (cur_parent < 0) & base_match
 
 		# Satisfied = either stacking OK or base OK
 		satisfied = cond_stacked | cond_base       # [N]
@@ -323,14 +323,15 @@ class Labbe_S(LabbeMCTS):
 		"""
 		current_x, target_x = state['current'], self.env.target_x
 
-		cur_parent = build_parent_of(current_x)
+		cur_parent = current_x[:, Indices.PARENT].squeeze()  # [N]
+		tgt_parent = target_x[:, Indices.PARENT].squeeze()  # [N]
 
 		cur_centers = current_x[:, Indices.COORD]
 		tgt_centers = target_x[:, Indices.COORD]
 		base_match = (cur_centers == tgt_centers).all(dim=1)  # [N]
 
-		cond_stacked = (self.tgt_parent >= 0) & (cur_parent == self.tgt_parent)
-		cond_base    = (self.tgt_parent < 0) & (cur_parent < 0) & base_match
+		cond_stacked = (tgt_parent >= 0) & (cur_parent == tgt_parent)
+		cond_base    = (tgt_parent < 0) & (cur_parent < 0) & base_match
 
 		satisfied = cond_stacked | cond_base
 		return satisfied.float().mean().item()
@@ -425,5 +426,4 @@ class Labbe_S(LabbeMCTS):
 	def solve(self, c: float=0.1, static_stack: bool=False, verbose: int=0, time_limit: int=1000):
 		self.static_stack = static_stack
 		self.env.static_stack = static_stack
-		self.tgt_parent = build_parent_of(self.env.target_x)
 		return self._solve(c, verbose, time_limit)

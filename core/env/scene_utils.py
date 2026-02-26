@@ -7,12 +7,6 @@ from core.env.scene_manager import Indices, SceneManager, get_object_below, cal_
 
 def scene_meta_to_x(scene_meta: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
 	"""Convert JSON scene representation to tensor format"""
-	def base_id_to_relation(base_id, num_objects):
-		relation = [0] * num_objects
-		if base_id is not None:
-			relation[base_id] = 1
-		return relation
-
 	num_objects = scene_meta['num_objects']
 
 	initial_x = torch.tensor([
@@ -20,20 +14,32 @@ def scene_meta_to_x(scene_meta: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Ten
 			obj['label'], 
 			*obj['size'], 
 			*obj['initial_pos'], 
-			*base_id_to_relation(obj.get('initial_base_id'), num_objects)
+			obj['initial_base_id'] if obj['initial_base_id'] is not None else -1
 		]
 		for obj in scene_meta['objects']
 	], dtype=torch.long)
+
+	initial_x = torch.cat([initial_x, torch.full((num_objects, 1), -1, dtype=torch.long)], dim=1)
+	for obj in scene_meta['objects']:
+		if obj['initial_base_id'] is not None:
+			base_id = obj['initial_base_id']
+			initial_x[base_id, Indices.CHILD] = obj['object_id']
 
 	target_x = torch.tensor([
 		[
 			obj['label'], 
 			*obj['size'], 
 			*obj['target_pos'], 
-			*base_id_to_relation(obj.get('target_base_id'), num_objects)
+			obj['target_base_id'] if obj['target_base_id'] is not None else -1
 		]
 		for obj in scene_meta['objects']
 	], dtype=torch.long)
+
+	target_x = torch.cat([target_x, torch.full((num_objects, 1), -1, dtype=torch.long)], dim=1)
+	for obj in scene_meta['objects']:
+		if obj['target_base_id'] is not None:
+			base_id = obj['target_base_id']
+			target_x[base_id, Indices.CHILD] = obj['object_id']
 
 	return initial_x, target_x
 

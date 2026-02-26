@@ -34,27 +34,28 @@ class Indices:
 	LABEL = slice(0, 1)
 	SIZE = slice(1, 3)
 	COORD = slice(3, 5)
-	RELATION = slice(5, None)
+	PARENT = slice(5, 6)
+	CHILD = slice(6, 7)
 
 ## Utility functions for object relations
 def get_object_below(x: torch.Tensor, obj: int) -> Optional[int]:
 	"""
 	Returns the index of the object directly below 'obj' in the stack, or None if it's a base object.
-	x[:,RELATION] is one-hot rows: row[i,j]==1 means i sits on j.
+	x[i, PARENT] = j: means i is stacked on j.
 	"""
-	i = (x[obj, Indices.RELATION] == 1).nonzero(as_tuple=True)[0]
-	if len(i):
-		return int(i.item())
+	below = x[obj, Indices.PARENT].item()
+	if below != -1:
+		return below
 	return None
 
 def get_object_above(x: torch.Tensor, obj: int) -> Optional[int]:
 	"""
 	Returns the index of the object directly above 'obj' in the stack, or None if nothing is stacked on it.
-	x[:,RELATION] is one-hot rows: row[i,j]==1 means i sits on j.
+	x[j, CHILD] = i: means i is stacked on j.
 	"""
-	i = (x[:, Indices.RELATION.start + obj] == 1).nonzero(as_tuple=True)[0]
-	if len(i):
-		return int(i.item())
+	above = x[obj, Indices.CHILD].item()
+	if above != -1:
+		return above
 	return None
 
 def is_stacked(x: torch.Tensor, obj: int) -> bool:
@@ -74,36 +75,6 @@ def get_object_base(x: torch.Tensor, obj: int) -> int:
 		obj = obj_below
 		obj_below = get_object_below(x, obj)
 	return obj
-
-def build_parent_of(x: torch.Tensor) -> torch.Tensor:
-	"""
-	For each object k, returns the object it sits on (parent), or -1 if none.
-	x[:,RELATION] is one-hot rows: row[i,j]==1 means i sits on j.
-	In this mapping, `parent_of[i] = j` means object `i` sits on object `j`.
-	"""
-	N = x.size(0)
-
-	rel  = x[:, Indices.RELATION]            # [N,N]
-	rows, cols = rel.nonzero(as_tuple=True)  # rows[k] is the child, cols[k] is the parent
-
-	parent_of = torch.full((N,), -1, dtype=torch.long)
-	parent_of[rows] = cols
-	return parent_of
-
-def build_child_of(x: torch.Tensor) -> torch.Tensor:
-	"""
-	For each object k, returns the object that sits on it (child), or -1 if none.
-	x[:,RELATION] is one-hot rows: row[i,j]==1 means i sits on j.
-	In this mapping, `child_of[j] = i` means object `i` sits on object `j`.
-	"""
-	N = x.size(0)
-
-	rel  = x[:, Indices.RELATION]            # [N,N]
-	rows, cols = rel.nonzero(as_tuple=True)  # cols[k] is the parent, rows[k] is the child
-
-	child_of = torch.full((N,), -1, dtype=torch.long)
-	child_of[cols] = rows
-	return child_of
 
 ## Scene utility functions
 def get_patch_slice(coor: List[int], size: List[int], grid_size: Tuple[int, int]):
@@ -241,9 +212,10 @@ def create_scene(
 			raise ValueError('Man! The objects are too big!')
 
 	# Determine the full dimension D of the object tensor
-	# D = 1 (label) + 2 (size) + 2 (coord) + N (relation one-hot) = N + 5
-	x_arr = torch.zeros((num_objects, num_objects+4), dtype=torch.long)
+	# D = 1 (label) + 2 (size) + 2 (coord) + 1 (parent) + 1 (child) = 6
+	x_arr = torch.zeros((num_objects, 4), dtype=torch.long)
 	x_arr = torch.cat([torch.tensor(labels, dtype=torch.long).reshape(-1, 1), x_arr], dim=1).to(torch.long)
+	x_arr = torch.cat([x_arr, torch.full((num_objects, 2), -1, dtype=torch.long)], dim=1)
 
 	# Random label for each obj
 	objs = list(range(num_objects))
@@ -270,10 +242,11 @@ def create_scene(
 				continue
 
 			# Avoid stacking multiple objects on top of the same base
-			if torch.sum(x_arr[:, Indices.RELATION.start + obj2]) >= 1:
+			if x_arr[obj2, Indices.CHILD].item() != -1:
 				continue
 
-			x_arr[obj1, Indices.RELATION.start + obj2] = 1
+			x_arr[obj1, Indices.PARENT] = obj2
+			x_arr[obj2, Indices.CHILD] = obj1
 
 	base_objs = [i for i in range(num_objects) if not is_stacked(x_arr, i)]
 
@@ -450,19 +423,6 @@ def cal_density(x: torch.Tensor, grid_size: Tuple[int, int]) -> float:
 	return phi / (grid_size[0] * grid_size[1])
 
 ## State representation functions
-def positional_encode(one_hot: torch.Tensor) -> torch.Tensor:
-	"""
-	Vectorized positional encoding: For each one-hot row, return the index of 1.
-	If the row is all-zero (no one-hot match), return -1.
-	Input shape: [N, D_relation]
-	Output shape: [N, 1]
-	"""
-	# Find index of max value (argmax), but it's invalid if row is all zeros
-	pos = one_hot.argmax(dim=1)                  # [N]
-	is_zero = one_hot.sum(dim=1) == 0            # [N] boolean mask
-	pos[is_zero] = -1                            # replace with -1
-	return pos.view(-1, 1)                       # [N, 1]
-
 def state_to_hashable(state: Dict[str, torch.Tensor]) -> tuple:
 	"""
 	Convert a structured state dict into a flat, hashable Python tuple.
@@ -473,26 +433,24 @@ def state_to_hashable(state: Dict[str, torch.Tensor]) -> tuple:
 	"""
 	curr = state['current']
 
-	# Vectorized positional encoding
-	curr_rel = positional_encode(curr[:, Indices.RELATION])
-
 	# Concatenate relevant columns from current and target
 	# Each shape: [N, ?], final shape: [N, total_features]
 	new_state = torch.cat([
-		curr[:, Indices.LABEL],       # [N,1]
-		curr[:, Indices.SIZE],        # [N,2]
-		curr[:, Indices.COORD],       # [N,2]
-		curr_rel,                     # [N,1]
-	], dim=1)                         # → [N, 6]
+		curr[:, Indices.LABEL],    # [N,1]
+		curr[:, Indices.SIZE],     # [N,2]
+		curr[:, Indices.COORD],    # [N,2]
+		curr[:, Indices.PARENT],   # [N,1]
+		curr[:, Indices.CHILD],    # [N,1]
+	], dim=1)                      # → [N, 7]
 
 	# Flatten to 1D
-	flat_state = new_state.flatten()            # shape [N * 6]
+	flat_state = new_state.flatten()            # shape [N * 7]
 
 	# Convert manipulator to 1D tensor
 	manip = state['manipulator'].flatten()      # shape [2]
 
 	# Concatenate and convert once to list
-	all_vals = torch.cat([manip, flat_state])   # shape [2 + N*6]
+	all_vals = torch.cat([manip, flat_state])   # shape [2 + N*7]
 	return tuple(all_vals.tolist())             # final tuple
 
 def copy_state(state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
@@ -852,9 +810,10 @@ class SceneManager:
 		self.initial_x = self.current_x.clone()
 
 		if use_stack is False:
-			if torch.sum(self.initial_x[:, Indices.RELATION]) > 0:
+			# any parent is not -1
+			if torch.any(self.initial_x[:, Indices.PARENT] != -1):
 				raise ValueError('Initial scene has stacks in Non-stack mode')
-			if torch.sum(self.target_x[:, Indices.RELATION]) > 0:
+			if torch.any(self.target_x[:, Indices.PARENT] != -1):
 				raise ValueError('Target scene has stacks in Non-stack mode')
 
 		self.init()
@@ -908,20 +867,18 @@ class SceneManager:
 		Only base objects (those not stacked on anything) are marked on the table.
 
 		Args:
-			x: [N, D] tensor of obj features (LABEL, SIZE, COORD, RELATION…).
+			x: [N, D] tensor of obj features (LABEL, SIZE, COORD, PARENT, CHILD).
 
 		Returns:
 			[H, W] occupancy table with 0=empty, (i+1)=object i.
 		"""
 		# Identify base objects
-		rel          = x[:, Indices.RELATION]         # [N, N]
-		stacked_mask = rel.any(dim=1)                 # [N]
-		base_idx     = (~stacked_mask).nonzero()[:,0]  # [Nb]
+		base_idx = torch.where(x[:, Indices.PARENT] == -1)[0]  # [Nb]
 
 		# Gather centers & sizes for bases
 		coords     = x[base_idx, Indices.COORD]  # [Nb,2]
 		sizes      = x[base_idx, Indices.SIZE]   # [Nb,2]
-		half_sizes = sizes // 2                         # [Nb,2]
+		half_sizes = sizes // 2                  # [Nb,2]
 
 		# Initialize the background table
 		table = torch.zeros(self.grid_size, dtype=torch.uint8)
@@ -1311,7 +1268,7 @@ class SceneManager:
 			new_center: The new (x, y) center coordinate for the object.
 		"""
 		# Build a parent-of map for the current state
-		child_of = build_child_of(self.current_x)  # [N]
+		child_of = self.current_x[:, Indices.CHILD]  # [N]
 
 		# Walk the chain from `obj` up to the topmost object
 		desc_mask = torch.zeros(self.N, dtype=torch.bool)
@@ -1344,7 +1301,8 @@ class SceneManager:
 			self._erase_from_table(start_obj)
 		else:
 			# Remove any old stacking-relation from the object below
-			self.current_x[start_obj][Indices.RELATION.start+prev_below] = 0
+			self.current_x[prev_below][Indices.CHILD] = -1
+			self.current_x[start_obj][Indices.PARENT] = -1
 
 		# -- Calculate manipulator movement costs --
 		cost = 0.0
@@ -1378,9 +1336,8 @@ class SceneManager:
 		if not self.stability_mask[start_obj, target_obj]:
 			raise ValueError(f'not stable {start_obj} -> {target_obj}')
 
-		# Target‐empty check (no one currently sits on target_obj)
-		rel = self.current_x[:, Indices.RELATION]
-		if rel[:, target_obj].any():
+		# Target‐empty check (no one currently is stacked on target_obj)
+		if self.current_x[target_obj, Indices.CHILD] != -1:
 			raise ValueError(f'obj {target_obj} is not empty')
 
 		prev_below = get_object_below(self.current_x, start_obj)
@@ -1389,7 +1346,8 @@ class SceneManager:
 			self._erase_from_table(start_obj)
 		else:
 			# Remove any old stacking-relation from the object below
-			self.current_x[start_obj][Indices.RELATION.start+prev_below] = 0
+			self.current_x[prev_below][Indices.CHILD] = -1
+			self.current_x[start_obj][Indices.PARENT] = -1
 
 		# -- Calculate manipulator movement costs --
 		cost = 0.0
@@ -1399,7 +1357,8 @@ class SceneManager:
 		cost += self.cal_manipulator_cost(prev_coord)
 
 		# Stack start_obj on top of target_obj by updating relation
-		self.current_x[start_obj][Indices.RELATION.start+target_obj] = 1
+		self.current_x[target_obj][Indices.CHILD] = start_obj
+		self.current_x[start_obj][Indices.PARENT] = target_obj
 
 		# Cost of moving manipulator from prev_coord to destination
 		destination  = self.current_x[target_obj, Indices.COORD]
@@ -1423,10 +1382,9 @@ class SceneManager:
 			A list of integer object indices.
 		"""
 		# Which objects are empty and stable?
-		rel       = self.current_x[:, Indices.RELATION]      # [N, N] one-hot
-		empty_j   = ~rel.any(dim=0)             # [N] bool
-		stable_j = self.stability_mask[ref_obj]  # [N] bool
-		valid_j = empty_j & stable_j            # [N] bool
+		empty_j = (self.current_x[:, Indices.CHILD].squeeze() == -1)  # [N] bool
+		stable_j = self.stability_mask[ref_obj]  	# [N] bool
+		valid_j = empty_j & stable_j            	# [N] bool
 
 		# Extract their indices
 		candidates = torch.nonzero(valid_j, as_tuple=False).view(-1)  # [K]
@@ -1643,8 +1601,7 @@ class SceneManager:
 			A list of encoded integer action codes for valid stack actions.
 		"""
 		# Which objects k are empty
-		rel     = self.current_x[:, Indices.RELATION]       # [N,N]
-		empty_k = ~rel.any(dim=0)              # [N]
+		empty_k = (self.current_x[:, Indices.CHILD] == -1)  # [N] bool
 
 		# Combine & apply static_stack
 		mask = self.stability_mask & empty_k.view(1, self.N)
@@ -1679,8 +1636,7 @@ class SceneManager:
 
 		# Which k are allowed (static_stack skips non‐empty actors)
 		if self.static_stack:
-			rel     = self.current_x[:, Indices.RELATION]
-			empty_k = ~rel.any(dim=0)                  # True if k has no one on top
+			empty_k = (self.current_x[:, Indices.CHILD] == -1)  # [N] bool
 			ks      = empty_k.nonzero(as_tuple=False).view(-1)
 		else:
 			ks = torch.arange(self.N)
@@ -1787,15 +1743,12 @@ class SceneManager:
 		cost = 0.0
 		terminated = False
 
-		rel = self.current_x[:, Indices.RELATION]
-
+		if self.static_stack and self.current_x[start_obj, Indices.CHILD] != -1:
+			raise ValueError(f'can not stack non-empty objects')
+		
 		if action_type == 'move':
-			if self.static_stack and rel[:, start_obj].any():
-				raise ValueError(f'can not move non-empty objects')
 			cost += self.move_func(start_obj, coord)
-		elif action_type == 'stack':
-			if self.static_stack and rel[:, start_obj].any():
-				raise ValueError(f'can not stack non-empty objects')
+		elif action_type == 'stack':			
 			cost += self.stack_func(start_obj, target_obj)
 
 		cost += self.pp_cost # Add per-pickup cost

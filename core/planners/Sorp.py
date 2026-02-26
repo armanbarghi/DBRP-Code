@@ -5,7 +5,7 @@ from tqdm import tqdm
 from typing import Union, List, Tuple, Optional, Dict
 from core.planners.planning_utils import BaseSearch, reconstruct_path
 from core.planners.Labbe import Labbe_S
-from core.env.scene_manager import Indices, build_parent_of, copy_state
+from core.env.scene_manager import Indices, copy_state
 
 
 class MctsNode:
@@ -55,16 +55,17 @@ class Sorp(BaseSearch):
 		current_x, target_x = state['current'], self.env.target_x
 
 		# Build parent‐of maps once
-		cur_parent = build_parent_of(current_x)
+		cur_parent = current_x[:, Indices.PARENT]
+		tgt_parent = target_x[:, Indices.PARENT]
 
 		# Stacking condition for objs that should be stacked
-		cond_stacked = (self.tgt_parent >= 0) & (cur_parent == self.tgt_parent)
+		cond_stacked = (tgt_parent >= 0) & (cur_parent == tgt_parent)
 
 		# Base condition for objs that should be on the table
 		cur_centers = current_x[:, Indices.COORD]
 		tgt_centers = target_x[:, Indices.COORD]
 		base_match = (cur_centers == tgt_centers).all(dim=1)  # [N]
-		cond_base    = (self.tgt_parent < 0) & (cur_parent < 0) & base_match
+		cond_base    = (tgt_parent < 0) & (cur_parent < 0) & base_match
 
 		# Satisfied = either stacking OK or base OK
 		satisfied = cond_stacked | cond_base       # [N]
@@ -92,8 +93,7 @@ class Sorp(BaseSearch):
 		# Which k are allowed (static_stack skips non‐empty actors)
 		if self.static_stack:
 			rem = torch.tensor(rem, dtype=torch.long)
-			rel     = self.env.current_x[:, Indices.RELATION]
-			empty_k = ~rel.any(dim=0)                  # True if k has no one on top
+			empty_k = (self.env.current_x[:, Indices.PARENT] == -1)
 			mask = empty_k[rem]
 			ks = rem[mask].tolist()
 		else:
@@ -351,7 +351,6 @@ class Sorp(BaseSearch):
 		self.start_time = time.time()
 		self.static_stack = static_stack
 		self.score_sorting = score_sorting
-		self.tgt_parent = build_parent_of(self.env.target_x)
 
 		MctsNode.node_counter = 0
 		self.num_buffers = num_buffers
