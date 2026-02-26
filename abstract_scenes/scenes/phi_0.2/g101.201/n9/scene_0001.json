@@ -1,0 +1,173 @@
+{
+    "scene_id": 1,
+    "phi": 0.19550761046253878,
+    "num_objects": 9,
+    "grid_size": [
+        101,
+        201
+    ],
+    "objects": [
+        {
+            "object_id": 0,
+            "label": 3,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                60,
+                156
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                28,
+                54
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 1,
+            "label": 10,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                37,
+                134
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                65,
+                57
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 2,
+            "label": 2,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                81,
+                40
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                45,
+                109
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 3,
+            "label": 9,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                16,
+                180
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                83,
+                117
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 4,
+            "label": 9,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                83,
+                18
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                15,
+                142
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 5,
+            "label": 7,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                33,
+                157
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                17,
+                182
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 6,
+            "label": 2,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                11,
+                64
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                13,
+                101
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 7,
+            "label": 0,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                75,
+                77
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                59,
+                175
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 8,
+            "label": 7,
+            "size": [
+                21,
+                21
+            ],
+            "initial_pos": [
+                18,
+                87
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                89,
+                82
+            ],
+            "target_base_id": null
+        }
+    ]
+}

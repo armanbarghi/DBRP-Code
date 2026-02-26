@@ -1,0 +1,191 @@
+{
+    "scene_id": 6,
+    "phi": 0.529,
+    "num_objects": 10,
+    "grid_size": [
+        100,
+        100
+    ],
+    "objects": [
+        {
+            "object_id": 0,
+            "label": 7,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                36,
+                18
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                82,
+                12
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 1,
+            "label": 5,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                21,
+                74
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                65,
+                80
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 2,
+            "label": 6,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                49,
+                61
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                86,
+                47
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 3,
+            "label": 1,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                76,
+                69
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                58,
+                22
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 4,
+            "label": 7,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                88,
+                28
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                13,
+                81
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 5,
+            "label": 3,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                12,
+                24
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                16,
+                58
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 6,
+            "label": 1,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                14,
+                50
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                40,
+                74
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 7,
+            "label": 10,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                49,
+                87
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                31,
+                15
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 8,
+            "label": 2,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                64,
+                36
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                44,
+                49
+            ],
+            "target_base_id": null
+        },
+        {
+            "object_id": 9,
+            "label": 9,
+            "size": [
+                23,
+                23
+            ],
+            "initial_pos": [
+                60,
+                12
+            ],
+            "initial_base_id": null,
+            "target_pos": [
+                88,
+                83
+            ],
+            "target_base_id": null
+        }
+    ]
+}
