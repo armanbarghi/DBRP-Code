@@ -420,7 +420,7 @@ class Strap_S(Astar):
 			ks = rem
 
 		valid_actions = []
-		stack_nums = max(int(0.6 * self.num_buffers), 1)
+		stack_nums = max(int(self.exp_bias * self.num_buffers), 1)
 
 		for k in ks:
 			valid_stacks = []
@@ -447,18 +447,19 @@ class Strap_S(Astar):
 
 		return valid_actions
 
-	def evaluate_state2(self, state: Dict[str, torch.Tensor]) -> float:
+	def evaluate_state(self, state: Dict[str, torch.Tensor]) -> float:
 		"""
 		Heuristic for each remaining object k:
 			Aₖ = dist(Cₖ → Tₖ) * NF
-			Bₖ = min_j [ dist(Cₖ → Cⱼ) + dist(Tⱼ → Tₖ) ] * NF + pp_cost
+			Bₖ = min_j [ dist(Cₖ → Cⱼ) ] * NF + pp_cost
 				(only over supporting j)
-		Final h = sum_k ( min(Aₖ, Bₖ) + pp_cost )
+			hₖ = 0 if base(oₖ) ∈ U else: min(Aₖ, Bₖ) 
+		Final h = sum_{k in U} ( hₖ ) + |U|.pp_cost
 		"""
 		cur_x, tgt_x  = state['current'], self.env.target_x
 		pp_cost, norm = self.env.pp_cost, self.env.normalization_factor
 
-		# Remaining indices
+		# Remaining indices U
 		rem = torch.tensor(self.get_remaining_objs(state), dtype=torch.long)
 		if rem.numel() == 0:
 			return 0.0
@@ -467,40 +468,54 @@ class Strap_S(Astar):
 		cur_ctr = cur_x[rem, Indices.COORD].float()  # [R,2]
 		tgt_ctr = tgt_x[rem, Indices.COORD].float()  # [R,2]
 
-		# Compute A = direct move distance
+		# Compute direct move distance to target
 		A = torch.cdist(cur_ctr, tgt_ctr, p=2).diag() * norm     # [R]
 
 		# Precompute all object centers
 		all_cur = cur_x[:, Indices.COORD].float()    # [N,2]
-		all_tgt = tgt_x[:, Indices.COORD].float()    # [N,2]
 
 		# Pairwise distances
-		D_c = torch.cdist(cur_ctr, all_cur, p=2)  # cost C_k→C_j: [R,N]
-		D_t = torch.cdist(tgt_ctr, all_tgt, p=2)  # cost T_k→T_j: [R,N]
+		dist_to_all = torch.cdist(cur_ctr, all_cur, p=2)  # dist C_i -> C_j: [R,N]
+
+		# --- Find if o_i in rem is stacked on some o_j in rem ---
+		# dist_to_all[:, rem] gives distances between rem objects [R, R]
+		# env.stability_mask[rem][:, rem] gives stability between rem objects [R, R]
+		dist_rem = dist_to_all[:, rem]
+		stable_rem = self.env.stability_mask[rem][:, rem]
+		
+		# If distance is 0 and o_i can be stacked on o_j, then o_i is stacked on o_j (or its stack)
+		has_base_in_rem = ((dist_rem == 0) & stable_rem).any(dim=1)  # [R] bool
+		# --------------------------------------------------------
 
 		# Stability mask for rem rows
-		S_rem = self.env.stability_mask[rem]      # [R,N]
+		stable = self.env.stability_mask[rem]      # [R,N]
+		
+		# Only consider objects in `rem` as candidate bases
+		in_rem = torch.zeros(cur_x.size(0), dtype=torch.bool)
+		in_rem[rem] = True
 
-		# Compute stack‐move costs and invalidate unsupportable pairs
-		costs = D_c + D_t                   # [R,N]
-		costs[~S_rem] = float('inf')        # forbid non‐stable
+		valid_candidates = stable & in_rem.unsqueeze(0)       # [R,N] bool
 
-		# B = min_j costs[r,j] * norm + pp_cost
-		B = costs.min(dim=1).values * norm + pp_cost           # [R]
+		# Compute stack-move costs and invalidate unsupportable pairs
+		dist_to_all[~valid_candidates] = float('inf')        # forbid non-stable, non-empty, or not in rem
 
-		# Per‐object best cost = min(A, B) + pp_cost
-		best = torch.minimum(A, B) + pp_cost                 # [R]
+		# B = min_j dist[i,j] * norm + pp_cost
+		B = dist_to_all.min(dim=1).values * norm + pp_cost           # [R]
+
+		# objects with base in rem have h=0, else min(A, B)
+		h_i = torch.zeros_like(A)
+		h_i[~has_base_in_rem] = torch.minimum(A[~has_base_in_rem], B[~has_base_in_rem])
 
 		# Final h_cost
-		return best.sum()
+		return h_i.sum() + pp_cost * rem.numel()
 
-	def evaluate_state(self, state: Dict[str, torch.Tensor]) -> float:
+	def evaluate_state2(self, state: Dict[str, torch.Tensor]) -> float:
 		"""
 		Heuristic for each remaining object k:
 			Aₖ = dist(Cₖ → Tₖ) * NF
 			Bₖ = min_j [ dist(Cₖ → Cⱼ) ] * NF + pp_cost
 				(only over supporting j)
-		Final h = sum_k ( min(Aₖ, Bₖ) + pp_cost )
+		Final h = sum_k ( min(Aₖ, Bₖ) ) + |U|.pp_cost
 		"""
 		cur_x, tgt_x  = state['current'], self.env.target_x
 		pp_cost, norm = self.env.pp_cost, self.env.normalization_factor
@@ -532,18 +547,19 @@ class Strap_S(Astar):
 		# B = min_j costs[r,j] * norm + pp_cost
 		B = costs.min(dim=1).values * norm + pp_cost           # [R]
 
-		# Per‐object best cost = min(A, B) + pp_cost
-		best = torch.minimum(A, B) + pp_cost                 # [R]
+		# Per‐object best cost = min(A, B)
+		best = torch.minimum(A, B)                 # [R]
 
 		# Final h_cost
-		return best.sum()
+		return best.sum() + pp_cost * rem.numel()
 
-	def solve(self, num_buffers: int=4, score_sorting: bool=False, time_limit: int=1000, static_stack: bool=False):
+	def solve(self, num_buffers: int=4, score_sorting: bool=False, time_limit: int=1000, static_stack: bool=False, exp_bias: float=0.6):
 		self.tgt_parent = build_parent_of(self.env.target_x)
 		self.score_sorting = score_sorting
 		self.num_buffers = num_buffers
 		self.static_stack = static_stack
 		self.env.static_stack = static_stack
+		self.exp_bias = exp_bias
 		return self._solve(time_limit)
 
 class StrapGA_S(Strap_S):
