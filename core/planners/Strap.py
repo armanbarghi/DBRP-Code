@@ -509,50 +509,6 @@ class Strap_S(Astar):
 		# Final h_cost
 		return h_i.sum() + pp_cost * rem.numel()
 
-	def evaluate_state2(self, state: Dict[str, torch.Tensor]) -> float:
-		"""
-		Heuristic for each remaining object k:
-			Aₖ = dist(Cₖ → Tₖ) * NF
-			Bₖ = min_j [ dist(Cₖ → Cⱼ) ] * NF + pp_cost
-				(only over supporting j)
-		Final h = sum_k ( min(Aₖ, Bₖ) ) + |U|.pp_cost
-		"""
-		cur_x, tgt_x  = state['current'], self.env.target_x
-		pp_cost, norm = self.env.pp_cost, self.env.normalization_factor
-
-		# Remaining indices
-		rem = torch.tensor(self.get_remaining_objs(state), dtype=torch.long)
-		if rem.numel() == 0:
-			return 0.0
-
-		# Gather current & target centers for remaining: [R,2]
-		cur_ctr = cur_x[rem, Indices.COORD].float()  # [R,2]
-		tgt_ctr = tgt_x[rem, Indices.COORD].float()  # [R,2]
-
-		# Compute A = direct move distance
-		A = torch.cdist(cur_ctr, tgt_ctr, p=2).diag() * norm     # [R]
-
-		# Precompute all object centers
-		all_cur = cur_x[:, Indices.COORD].float()    # [N,2]
-
-		# Pairwise distances
-		costs = torch.cdist(cur_ctr, all_cur, p=2)  # cost C_k→C_j: [R,N]
-
-		# Stability mask for rem rows
-		S_rem = self.env.stability_mask[rem]      # [R,N]
-
-		# Compute stack‐move costs and invalidate unsupportable pairs
-		costs[~S_rem] = float('inf')        # forbid non‐stable
-
-		# B = min_j costs[r,j] * norm + pp_cost
-		B = costs.min(dim=1).values * norm + pp_cost           # [R]
-
-		# Per‐object best cost = min(A, B)
-		best = torch.minimum(A, B)                 # [R]
-
-		# Final h_cost
-		return best.sum() + pp_cost * rem.numel()
-
 	def solve(self, num_buffers: int=4, score_sorting: bool=False, time_limit: int=1000, static_stack: bool=False, exp_bias: float=0.6):
 		self.score_sorting = score_sorting
 		self.num_buffers = num_buffers
